@@ -1,0 +1,17 @@
+https://github.com/facebookresearch/fairseq/archive/refs/tags/v0.12.2.zip
+soundfile
+openai-whisper
+transformers
+num2words
+pyctcdecode
+https://github.com/kpu/kenlm/archive/master.zip
+spacy>=3.7,<3.8
+levenshtein
+nltk
+praatio
+g2pM
+librosa
+g2p-en
+pandas
+pyarrow
+scipy
