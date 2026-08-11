@@ -56,33 +56,41 @@ exp/model_assessment_val9_r1/decode_multipa/
 
 Model: `model_assessment_val9_r1`
 
-### MultiPA
-
-All 50 predictions are valid and matched with annotations. Utterance-level
-human scores are averaged across five annotators.
-
-| Level | Metric | N | PCC | SRCC |
-| --- | --- | ---: | ---: | ---: |
-| Utterance | Accuracy | 50 | 0.6095 | 0.6645 |
-| Utterance | Fluency | 50 | 0.6448 | 0.6572 |
-| Utterance | Prosody | 50 | 0.4626 | 0.5141 |
-| Word | Accuracy | 1,439 | 0.3713 | 0.3704 |
-
-The MultiPA annotations do not contain ground-truth utterance total, word
-stress, or word total scores, so those metrics are not reported.
-
 ### SpeechOcean762
 
 All 2,500 predictions are included; six invalid predictions use the fallback
 scores defined by the original evaluation protocol. Word labels are mapped by
 ground-truth timestamp overlap.
 
-| Level | Metric | N | PCC | SRCC |
-| --- | --- | ---: | ---: | ---: |
-| Utterance | Accuracy | 2,500 | 0.7050 | 0.6875 |
-| Utterance | Fluency | 2,500 | 0.7750 | 0.7601 |
-| Utterance | Prosody | 2,500 | 0.7727 | 0.7593 |
-| Utterance | Total | 2,500 | 0.7300 | 0.7155 |
-| Word | Accuracy | 16,139 | 0.4133 | 0.3539 |
-| Word | Stress | 16,139 | 0.2622 | 0.1605 |
-| Word | Total | 16,139 | 0.4237 | 0.3740 |
+#### Utterance-level Score (PCC)
+
+| Accuracy | Fluency | Prosody | Total |
+| :---: | :---: | :---: | :---: |
+| 0.7050 | 0.7750 | 0.7727 | 0.7300 |
+
+#### Word-level Score (PCC)
+
+| Accuracy | Stress | Total |
+| :---: | :---: | :---: |
+| 0.4133 | 0.2622 | 0.4237 |
+
+
+### MultiPA
+
+All 50 predictions are valid and matched with annotations. Utterance-level
+human scores are averaged across five annotators.
+
+#### Utterance-level Score (PCC)
+
+| Accuracy | Fluency | Prosody |
+| :---: | :---: | :---: |
+| 0.6095 | 0.6448 | 0.4626 |
+
+#### Word-level Score (PCC)
+
+| Accuracy |
+| :---: |
+| 0.3713 |
+
+The MultiPA annotations do not contain ground-truth utterance total, word
+stress, or word total scores, so those metrics are not reported.
