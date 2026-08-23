@@ -168,12 +168,15 @@ def evaluate(predictions, annotations):
     correlation("word accuracy", predicted_words, reference_words)
     print(f"Matched predicted words: {len(predicted_words)}")
     print("\nNo metrics are reported for total, word stress, or word total because")
-    print("multipa/annotation.csv does not contain those ground-truth labels.")
+    print("The MultiPA pilot-set annotations do not contain those ground-truth labels.")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evaluate MultiPA open-response predictions against MultiPA annotations."
+        description=(
+            "Evaluate MultiPA-model open-response predictions against "
+            "the MultiPA pilot-set annotations."
+        )
     )
     parser.add_argument(
         "--predictions",
@@ -191,6 +194,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 

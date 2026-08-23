@@ -81,7 +81,9 @@ def get_transcript(audio, whisper_model, return_seg=False):
     ----Return----
     transcript: str. ASR result of the input wavfile
     """
-    result = whisper_model.transcribe(audio, fp16=False)
+    # A single zero temperature disables Whisper's stochastic temperature
+    # fallback and keeps decoding deterministic.
+    result = whisper_model.transcribe(audio, fp16=False, temperature=0.0)
     if not return_seg:
         return result['text']
     else:
@@ -480,5 +482,4 @@ def feature_extraction(audio, gt_sen, asr_sen, alignment_model, word_model):
     asr_word_embed = get_roberta_word_embed(asr_word_list, num_of_token, word_model)
     
     return pred_words_gt, features_p, features_w, phonevector, gt_word_embed, asr_word_embed, word_phone_map_gt
-
 
