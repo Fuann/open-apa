@@ -1,0 +1,16 @@
+numpy
+scipy
+torch
+einops>=0.8.0
+rotary-embedding-torch==0.9.1
+espnet==202511
+transformers>=4.48,<5
+huggingface-hub>=0.28,<1
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+soundfile
+pyarrow
+g2p-en==2.1.0
+nltk>=3.9
+tqdm
+num2words

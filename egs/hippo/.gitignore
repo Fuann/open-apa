@@ -1,0 +1,5 @@
+.deps/
+__pycache__/
+exp/
+data/
+pretrained-models/
