@@ -1,3 +1,6 @@
+# fairseq 0.12.2 requires OmegaConf 2.0.x, whose legacy package metadata is
+# rejected by pip 24.1 and newer. Downgrade pip before installing this file;
+# see README.md.
 https://github.com/facebookresearch/fairseq/archive/refs/tags/v0.12.2.zip
 soundfile
 openai-whisper

@@ -1,7 +1,10 @@
 import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import gc
 import json
 import argparse
+import random
 import traceback
 import torch
 import fairseq
@@ -22,6 +25,21 @@ torch.cuda.empty_cache()
 from fairseq.data.dictionary import Dictionary
 torch.serialization.add_safe_globals([Dictionary])
 torch.serialization.add_safe_globals([argparse.Namespace])
+
+
+SEED = 1984
+
+
+def configure_deterministic_inference():
+    """Make supported Python, NumPy, and PyTorch inference operations reproducible."""
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.use_deterministic_algorithms(True)
 
 
 def configure_fairseq_spacy_tokenizer():
@@ -46,11 +64,24 @@ def main():
     parser.add_argument('--datalist', default='./multipa/multipa_test.txt', type=str, help='')
     parser.add_argument('--ckptdir', type=str, help='Path to pretrained checkpoint.')
     parser.add_argument('--output-file', type=str, default=None, help='Path to save prediction results.')
+    parser.add_argument('--transcripts', type=str, default=None,
+                        help='Optional scores.json whose reference words replace the Whisper Medium transcript.')
     parser.add_argument('--verbose', action='store_true', help='Print each audio prediction (default: disabled).')
 
 
     args = parser.parse_args()
+    configure_deterministic_inference()
     configure_fairseq_spacy_tokenizer()
+
+    transcripts = None
+    if args.transcripts is not None:
+        with open(args.transcripts, encoding='utf-8') as transcript_file:
+            samples = json.load(transcript_file)
+        transcripts = {}
+        for sample_id, sample in samples.items():
+            text = ' '.join(str(word['text']) for word in sample['words'])
+            text = remove_pun_except_apostrophe(text).lower()
+            transcripts[sample_id] = convert_num_to_word(text)
     
     ssl_path = args.fairseq_base_model
     roberta_path = args.fairseq_roberta
@@ -61,7 +92,9 @@ def main():
 
     word_model = RobertaModel.from_pretrained(roberta_path, checkpoint_file='model.pt')
     word_model.eval()
-    whisper_model_s = whisper.load_model("medium.en")
+    whisper_model_s = None
+    if transcripts is None:
+        whisper_model_s = whisper.load_model("medium.en")
     whisper_model_w = whisper.load_model("base.en")
 
     aligment_model = charsiu_forced_aligner(aligner='charsiu/en_w2v2_fc_10ms')
@@ -109,8 +142,14 @@ def main():
                 sr = SAMPLE_RATE
 
             wav  = torch.reshape(wav, (-1,))
-            sen_asr_s = remove_pun_except_apostrophe(get_transcript(wav, whisper_model_s)).lower()
-            sen_asr_s = convert_num_to_word(sen_asr_s)
+            if transcripts is None:
+                sen_asr_s = remove_pun_except_apostrophe(get_transcript(wav, whisper_model_s)).lower()
+                sen_asr_s = convert_num_to_word(sen_asr_s)
+            else:
+                sample_id = os.path.splitext(os.path.basename(filename))[0]
+                if sample_id not in transcripts:
+                    raise KeyError(f'Missing ground-truth transcript for {sample_id}')
+                sen_asr_s = transcripts[sample_id]
 
             sen_asr_w = remove_pun_except_apostrophe(get_transcript(wav, whisper_model_w)).lower()
             sen_asr_w = convert_num_to_word(sen_asr_w)
@@ -163,4 +202,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

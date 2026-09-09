@@ -581,27 +581,3 @@ class charsiu_predictive_aligner(charsiu_aligner):
         else:
             raise Exception('Please specify the correct output format (tsv or textgird)!')
 
-
-if __name__ == "__main__":
-    
-    '''
-    Test code
-    '''
-    charsiu = charsiu_forced_aligner(aligner='charsiu/en_w2v2_fc_10ms')
-    # perform forced alignment
-    alignment = charsiu.align(audio='./local/SA1.WAV',
-                              text='She had your dark suit in greasy wash water all year.')
-
-    # Chinese models
-    charsiu = charsiu_predictive_aligner(aligner='charsiu/zh_xlsr_fc_10ms',lang='zh')
-    charsiu.align(audio=audio)
-    charsiu.serve(audio='./local/SSB00050015_16k.wav', save_to='./local/SSB00050015.TextGrid')
-    
-    charsiu = charsiu_forced_aligner(aligner='charsiu/zh_w2v2_tiny_fc_10ms',lang='zh')
-    audio, sr = sf.read('/home/lukeum/Downloads/000001_16k.wav')
-    phones, words = charsiu.align(audio=audio,text='卡尔普陪外孙玩滑梯。')
-    charsiu.serve(audio='./local/SSB00050015_16k.wav', text='经广州日报报道后成为了社会热点。',
-                  save_to='./local/SSB00050015.TextGrid')
-    
-
-

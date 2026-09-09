@@ -4,13 +4,14 @@
 export LC_ALL=C
 
 multipa_conda_env=${MULTIPA_CONDA_ENV:-multipa}
+multipa_conda_exe=${MULTIPA_CONDA_EXE:-${CONDA_EXE:-}}
 
-if command -v conda >/dev/null 2>&1; then
+if [[ -n $multipa_conda_exe && -x $multipa_conda_exe ]]; then
+    :
+elif command -v conda >/dev/null 2>&1; then
     multipa_conda_exe=$(command -v conda)
-elif [[ -x /share/homes/fuann/miniconda3/bin/conda ]]; then
-    multipa_conda_exe=/share/homes/fuann/miniconda3/bin/conda
 else
-    echo "Conda was not found. Install Conda or add it to PATH." >&2
+    echo "Conda was not found. Add it to PATH or set MULTIPA_CONDA_EXE." >&2
     return 1
 fi
 

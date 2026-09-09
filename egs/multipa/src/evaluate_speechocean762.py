@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate MultiPA open-response predictions on SpeechOcean762."""
+"""Evaluate MultiPA-model predictions on the SpeechOcean762 test set."""
 
 import argparse
 import ast
