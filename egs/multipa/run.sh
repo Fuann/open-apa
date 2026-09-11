@@ -6,7 +6,7 @@
 #   0: Download the selected data and all pretrained models
 #   1: Extract pretrained models and create the evaluation file list
 #   2: Run MultiPA model inference in the selected evaluation mode
-#   3: Evaluate utterance- and word-level correlations
+#   3: Evaluate all five seeds and report PCC mean/std
 
 set -euo pipefail
 
@@ -14,15 +14,16 @@ set -euo pipefail
 
 # Download locations
 multipa_repo=yuwchen/multipa
+assessment_repo=fuann/multipa-model
 speechocean_repo=mispeech/speechocean762
 hubert_url=https://dl.fbaipublicfiles.com/hubert/hubert_base_ls960.pt
 roberta_url=https://dl.fbaipublicfiles.com/fairseq/models/roberta.base.tar.gz
 
 # All model files and archives live here.
 pretrained_dir=pretrained-models
-pretrained_model=model_assessment_val9_r1
-assessment_archive=$pretrained_dir/$pretrained_model.zip
-checkpoint_dir=$pretrained_dir/$pretrained_model
+pretrained_model=multipa-model
+checkpoint_root=$pretrained_dir/$pretrained_model
+model_seeds=(0 1 2 3 4)
 fairseq_base_model=$pretrained_dir/fairseq_hubert/hubert_base_ls960.pt
 roberta_archive=$pretrained_dir/roberta.base.tar.gz
 fairseq_roberta=$pretrained_dir/roberta.base
@@ -30,6 +31,7 @@ fairseq_roberta=$pretrained_dir/roberta.base
 # Experiment configuration
 test_data=multipa
 evaluation_mode=both
+whisper_model=medium.en
 gpu=0
 verbose=false
 
@@ -53,6 +55,10 @@ Options:
   --evaluation-mode MODE
                   open, close, or both (default: $evaluation_mode).
                   MultiPA always runs open; SpeechOcean762 defaults to both.
+  --response-mode MODE Alias for --evaluation-mode (closed also accepted)
+  --whisper-model NAME Main transcript Whisper model (default: $whisper_model)
+                       SpeechOcean762 open supports medium.en and large-v3;
+                       it reuses data/speechocean762/transcript/test JSONL.
   --verbose       Print each audio prediction (default: disabled)
 EOF
 }
@@ -63,7 +69,8 @@ while [[ $# -gt 0 ]]; do
         --stop-stage) stop_stage=$2; shift 2 ;;
         --gpu) gpu=$2; shift 2 ;;
         --test-data) test_data=$2; shift 2 ;;
-        --evaluation-mode) evaluation_mode=$2; shift 2 ;;
+        --evaluation-mode|--response-mode) evaluation_mode=$2; shift 2 ;;
+        --whisper-model) whisper_model=$2; shift 2 ;;
         --verbose) verbose=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -88,6 +95,8 @@ case "$test_data" in
     *) echo "Unsupported --test-data: $test_data" >&2; exit 2 ;;
 esac
 
+[[ $evaluation_mode == closed ]] && evaluation_mode=close
+
 case "$evaluation_mode" in
     open|both) ;;
     close)
@@ -108,6 +117,29 @@ else
 fi
 
 data_list=data/${test_data}_test.txt
+
+decode_directory() {
+    local seed=$1
+    local mode=$2
+    local name=decode_${test_data}_${mode}
+    if [[ $test_data == speechocean762 && $mode == open ]]; then
+        name+=_faster-whisper-${whisper_model}-float16-beam5
+    elif [[ $mode == open && $whisper_model != medium.en ]]; then
+        name+=_${whisper_model//\//_}
+    fi
+    echo "exp/$pretrained_model/$seed/$name"
+}
+
+summary_directory() {
+    local mode=$1
+    local name=evaluate_${test_data}_${mode}
+    if [[ $test_data == speechocean762 && $mode == open ]]; then
+        name+=_faster-whisper-${whisper_model}-float16-beam5
+    elif [[ $mode == open && $whisper_model != medium.en ]]; then
+        name+=_${whisper_model//\//_}
+    fi
+    echo "exp/$pretrained_model/$name"
+}
 
 download_file() {
     local url=$1
@@ -138,19 +170,18 @@ if [[ $stage -le 0 && $stop_stage -ge 0 ]]; then
         hf download "$speechocean_repo" data/test-00000-of-00001.parquet \
             --repo-type dataset --local-dir "$dataset_dir"
     fi
-    hf download "$multipa_repo" model_assessment_val9_r1.zip \
-        --local-dir "$pretrained_dir"
+    hf download "$assessment_repo" \
+        --include '*/PRO/best' \
+        --local-dir "$checkpoint_root"
     download_file "$hubert_url" "$fairseq_base_model"
     download_file "$roberta_url" "$roberta_archive"
 fi
 
 if [[ $stage -le 1 && $stop_stage -ge 1 ]]; then
     echo -e "${GREEN}Stage 1: Extract models and prepare the file list${NC}"
-    [[ -f $assessment_archive ]] || { echo "Missing archive: $assessment_archive" >&2; exit 1; }
     [[ -f $roberta_archive ]] || { echo "Missing archive: $roberta_archive" >&2; exit 1; }
     [[ -f $fairseq_base_model ]] || { echo "Missing HuBERT model: $fairseq_base_model" >&2; exit 1; }
 
-    unzip -q -o "$assessment_archive" -d "$pretrained_dir"
     tar -xzf "$roberta_archive" -C "$pretrained_dir"
     if [[ $test_data == multipa ]]; then
         [[ -d $data_dir ]] || { echo "Missing audio directory: $data_dir" >&2; exit 1; }
@@ -180,7 +211,13 @@ if [[ $stage -le 1 && $stop_stage -ge 1 ]]; then
 fi
 
 if [[ $stage -le 2 && $stop_stage -ge 2 ]]; then
-    [[ -f $checkpoint_dir/PRO/best ]] || { echo "Missing checkpoint: $checkpoint_dir/PRO/best" >&2; exit 1; }
+    for seed in "${model_seeds[@]}"; do
+        checkpoint_dir=$checkpoint_root/$seed
+        [[ -f $checkpoint_dir/PRO/best ]] || {
+            echo "Missing checkpoint: $checkpoint_dir/PRO/best" >&2
+            exit 1
+        }
+    done
     [[ -f $fairseq_base_model ]] || { echo "Missing HuBERT model: $fairseq_base_model" >&2; exit 1; }
     [[ -f $fairseq_roberta/model.pt && -f $fairseq_roberta/dict.txt ]] || {
         echo "Missing RoBERTa model.pt or dict.txt in: $fairseq_roberta" >&2
@@ -195,34 +232,63 @@ if [[ $stage -le 2 && $stop_stage -ge 2 ]]; then
         }
     done < "$data_list"
 
-    for current_mode in "${evaluation_modes[@]}"; do
-        if [[ $test_data == multipa ]]; then
-            evaluation_name="MultiPA open"
-        else
-            evaluation_name="SpeechOcean762 $current_mode"
-        fi
-        output_dir=exp/$pretrained_model/decode_${test_data}_${current_mode}
-        prediction_file=$output_dir/test_mb.txt
-
-        echo -e "${GREEN}Stage 2: $evaluation_name inference with the MultiPA model${NC}"
-        mkdir -p "$output_dir"
-        verbose_option=()
-        [[ $verbose == true ]] && verbose_option+=(--verbose)
-        transcript_option=()
-        if [[ $current_mode == close ]]; then
-            [[ -f $scores_file ]] || { echo "Missing scores/transcripts: $scores_file" >&2; exit 1; }
-            transcript_option+=(--transcripts "$scores_file")
-        fi
-        CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONHASHSEED=1984 \
-        CUDA_VISIBLE_DEVICES=$gpu python ./src/test_open.py \
-            --fairseq_base_model "$fairseq_base_model" \
-            --fairseq_roberta "$fairseq_roberta" \
-            --datadir "$data_dir" \
+    open_transcript_file=
+    if [[ $test_data == speechocean762 && " ${evaluation_modes[*]} " == *" open "* ]]; then
+        case "$whisper_model" in
+            medium.en|large-v3) ;;
+            *)
+                echo "SpeechOcean762 open supports --whisper-model medium.en or large-v3" >&2
+                exit 2
+                ;;
+        esac
+        open_transcript_file=$dataset_dir/transcript/test/faster-whisper-${whisper_model}-float16-beam5.jsonl
+        echo -e "${GREEN}Preparing fixed SpeechOcean762 open transcripts: $whisper_model${NC}"
+        CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONHASHSEED=0 \
+        CUDA_VISIBLE_DEVICES=$gpu python ./src/prepare_open_transcripts.py \
+            --model "$whisper_model" \
+            --wav-dir "$data_dir" \
             --datalist "$data_list" \
-            --ckptdir "$checkpoint_dir" \
-            --output-file "$prediction_file" \
-            "${transcript_option[@]}" \
-            "${verbose_option[@]}" || exit 1
+            --output "$open_transcript_file"
+    fi
+
+    for seed in "${model_seeds[@]}"; do
+        checkpoint_dir=$checkpoint_root/$seed
+        for current_mode in "${evaluation_modes[@]}"; do
+            if [[ $test_data == multipa ]]; then
+                evaluation_name="MultiPA open"
+            else
+                evaluation_name="SpeechOcean762 $current_mode"
+            fi
+            output_dir=$(decode_directory "$seed" "$current_mode")
+            prediction_file=$output_dir/test_mb.txt
+
+            echo -e "${GREEN}Stage 2: $evaluation_name inference, seed $seed${NC}"
+            mkdir -p "$output_dir"
+            if [[ -s $prediction_file ]] && [[ $(wc -l < "$prediction_file") -eq $expected_samples ]]; then
+                echo "Complete prediction exists, skipping: $prediction_file"
+                continue
+            fi
+            verbose_option=()
+            [[ $verbose == true ]] && verbose_option+=(--verbose)
+            transcript_option=()
+            if [[ $current_mode == close ]]; then
+                [[ -f $scores_file ]] || { echo "Missing scores/transcripts: $scores_file" >&2; exit 1; }
+                transcript_option+=(--transcripts "$scores_file")
+            elif [[ $test_data == speechocean762 ]]; then
+                transcript_option+=(--open-transcripts "$open_transcript_file")
+            fi
+            CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONHASHSEED=1984 \
+            CUDA_VISIBLE_DEVICES=$gpu python ./src/test_open.py \
+                --fairseq_base_model "$fairseq_base_model" \
+                --fairseq_roberta "$fairseq_roberta" \
+                --datadir "$data_dir" \
+                --datalist "$data_list" \
+                --ckptdir "$checkpoint_dir" \
+                --output-file "$prediction_file" \
+                --whisper-model "$whisper_model" \
+                "${transcript_option[@]}" \
+                "${verbose_option[@]}" || exit 1
+        done
     done
 fi
 
@@ -241,30 +307,42 @@ if [[ $stage -le 3 && $stop_stage -ge 3 ]]; then
         else
             evaluation_name="SpeechOcean762 $current_mode"
         fi
-        output_dir=exp/$pretrained_model/decode_${test_data}_${current_mode}
-        prediction_file=$output_dir/test_mb.txt
-        result_file=$output_dir/result.txt
+        pcc_files=()
+        for seed in "${model_seeds[@]}"; do
+            output_dir=$(decode_directory "$seed" "$current_mode")
+            prediction_file=$output_dir/test_mb.txt
+            result_file=$output_dir/result.txt
+            pcc_file=$output_dir/pcc.json
 
-        echo -e "${GREEN}Stage 3: $evaluation_name evaluation with the MultiPA model${NC}"
-        [[ -f $prediction_file ]] || { echo "Missing predictions: $prediction_file" >&2; exit 1; }
-        mkdir -p "$output_dir"
-        if [[ $test_data == multipa ]]; then
-            python ./src/evaluate_multipa.py \
-                --predictions "$prediction_file" \
-                --annotations "$annotation_file" | tee "$result_file"
-        else
-            python ./src/evaluate_speechocean762.py \
-                --predictions "$prediction_file" \
-                --scores "$scores_file" \
-                --gt-alignments "$gt_alignment_dir" | tee "$result_file"
-        fi
+            echo -e "${GREEN}Stage 3: $evaluation_name evaluation, seed $seed${NC}"
+            [[ -f $prediction_file ]] || { echo "Missing predictions: $prediction_file" >&2; exit 1; }
+            mkdir -p "$output_dir"
+            if [[ $test_data == multipa ]]; then
+                python ./src/evaluate_multipa.py \
+                    --predictions "$prediction_file" \
+                    --annotations "$annotation_file" \
+                    --pcc-json "$pcc_file" | tee "$result_file"
+            else
+                python ./src/evaluate_speechocean762.py \
+                    --predictions "$prediction_file" \
+                    --scores "$scores_file" \
+                    --gt-alignments "$gt_alignment_dir" \
+                    --pcc-json "$pcc_file" | tee "$result_file"
+            fi
+            pcc_files+=("$pcc_file")
+        done
+        summary_dir=$(summary_directory "$current_mode")
+        mkdir -p "$summary_dir"
+        python ./src/summarize_pcc.py \
+            --results "${pcc_files[@]}" \
+            --output "$summary_dir/result_mean_std.txt"
     done
 fi
 
 if [[ $stop_stage -ge 3 ]]; then
     echo -e "${GREEN}Done. Results:${NC}"
     for current_mode in "${evaluation_modes[@]}"; do
-        echo "  exp/$pretrained_model/decode_${test_data}_${current_mode}/result.txt"
+        echo "  $(summary_directory "$current_mode")/result_mean_std.txt"
     done
 else
     echo -e "${GREEN}Done through stage $stop_stage.${NC}"

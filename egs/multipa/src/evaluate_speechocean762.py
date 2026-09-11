@@ -20,6 +20,7 @@ FALLBACK = {
     "word_stress": 5.0,
     "word_total": 1.0,
 }
+PCC_RESULTS = {}
 
 
 def parse_list(field):
@@ -101,6 +102,7 @@ def pad_merged_words(reference_text, predicted_text, predicted_scores):
 def correlation(name, prediction, reference):
     pcc = pearsonr(prediction, reference).statistic
     srcc = spearmanr(prediction, reference).statistic
+    PCC_RESULTS[name] = float(pcc)
     print(f"{name:<14} N={len(prediction):>5}  PCC={pcc:>8.4f}  SRCC={srcc:>8.4f}")
 
 
@@ -109,6 +111,7 @@ def main():
     parser.add_argument("--predictions", required=True)
     parser.add_argument("--scores", required=True)
     parser.add_argument("--gt-alignments", required=True)
+    parser.add_argument("--pcc-json")
     args = parser.parse_args()
 
     with open(args.scores, encoding="utf-8") as handle:
@@ -171,6 +174,11 @@ def main():
     print("\nWord-level correlation (ground-truth timestamp overlap)")
     for metric in predicted_words:
         correlation(f"word {metric}", predicted_words[metric], reference_words[metric])
+
+    if args.pcc_json:
+        output = Path(args.pcc_json)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(PCC_RESULTS, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

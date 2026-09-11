@@ -1,3 +1,4 @@
+import torch
 import os
 import nltk
 import string
@@ -63,7 +64,7 @@ def remove_pun(input_string):
     input_string = "".join([char for char in input_string if char not in string.punctuation])
     return input_string
 
-def get_transcript(audio, whisper_model, return_seg=False):
+def get_transcript(audio, whisper_model, return_seg=False, language=None):
     """
     get ASR result using whisper model
 
@@ -83,7 +84,9 @@ def get_transcript(audio, whisper_model, return_seg=False):
     """
     # A single zero temperature disables Whisper's stochastic temperature
     # fallback and keeps decoding deterministic.
-    result = whisper_model.transcribe(audio, fp16=False, temperature=0.0)
+    options = {} if language is None else {'language': language}
+    use_fp16 = next(whisper_model.parameters()).dtype == torch.float16
+    result = whisper_model.transcribe(audio, fp16=use_fp16, temperature=0.0, **options)
     if not return_seg:
         return result['text']
     else:
@@ -482,4 +485,3 @@ def feature_extraction(audio, gt_sen, asr_sen, alignment_model, word_model):
     asr_word_embed = get_roberta_word_embed(asr_word_list, num_of_token, word_model)
     
     return pred_words_gt, features_p, features_w, phonevector, gt_word_embed, asr_word_embed, word_phone_map_gt
-

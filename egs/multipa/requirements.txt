@@ -4,6 +4,7 @@
 https://github.com/facebookresearch/fairseq/archive/refs/tags/v0.12.2.zip
 soundfile
 openai-whisper
+faster-whisper
 transformers
 num2words
 pyctcdecode

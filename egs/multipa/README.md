@@ -20,7 +20,9 @@ egs/multipa/
     ├── test_open.py
     ├── evaluate_multipa.py
     ├── evaluate_speechocean762.py
+    ├── prepare_open_transcripts.py
     ├── prepare_speechocean762.py
+    ├── summarize_pcc.py
     └── supporting model/alignment modules
 ```
 
@@ -76,25 +78,43 @@ bash run.sh --test-data speechocean762 --evaluation-mode open
 ```
 
 SpeechOcean762 close uses the dataset's ground-truth transcript as the
-reference, while SpeechOcean762 open uses Whisper `medium.en`. Both modes still
-use Whisper `base.en` for the comparison ASR transcript. Close skips loading
-Whisper `medium.en`.
+reference. SpeechOcean762 open uses a fixed faster-whisper transcript from
+`data/speechocean762/transcript/test`. The default is `medium.en`; `large-v3`
+is also supported. If the selected transcript file is absent or incomplete,
+stage 2 generates the missing rows once with faster-whisper using FP16, beam
+size 5, and temperature 0. Both modes still use Whisper `base.en` for the
+comparison ASR transcript.
+
+With data and models prepared:
+
+```bash
+bash run.sh --stage 2 --test-data speechocean762 --evaluation-mode open --whisper-model medium.en
+```
+
+`--response-mode` is an alias for `--evaluation-mode`; `closed` is accepted as
+an alias for `close`.
 
 
-The experiment outputs follow
-`exp/{pretrained_model}/decode_{test_data}_{evaluation_mode}`.
-For the default configuration, predictions and final metrics are written to:
+The five assessment checkpoints are downloaded from the private model repo
+`fuann/multipa-model` and kept under `pretrained-models/multipa-model/{0..4}`.
+Predictions are separated by seed. For example, the default SpeechOcean762 open
+configuration writes to:
 
 ```text
-exp/model_assessment_val9_r1/decode_multipa_open/
+exp/multipa-model/0/decode_speechocean762_open_faster-whisper-medium.en-float16-beam5/
 ├── test_mb.txt
-└── result.txt
+├── result.txt
+└── pcc.json
 ```
+
+Stage 3 evaluates all five seeds and writes PCC mean and sample standard
+deviation to `exp/multipa-model/evaluate_*/result_mean_std.txt`.
 
 ## Implementation results
 
 Model: `model_assessment_val9_r1`
 
+The reported open results use Whisper `medium.en`, not the new `large-v3` default.
 All values are Pearson correlation coefficients (PCC) from the corresponding
 `exp/model_assessment_val9_r1/decode_*/result.txt` files.
 
@@ -110,3 +130,6 @@ All values are Pearson correlation coefficients (PCC) from the corresponding
 | Wrd-Score | Utt-Acc | Utt-Fluency | Utt-Prosody |
 | ---: | ---: | ---: | ---: |
 | 0.3703 | 0.6122 | 0.6567 | 0.4739 |
+
+The MultiPA annotations do not contain ground-truth utterance total, word
+stress, or word total scores, so those metrics are not reported.

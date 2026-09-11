@@ -64,12 +64,18 @@ def main():
     parser.add_argument('--datalist', default='./multipa/multipa_test.txt', type=str, help='')
     parser.add_argument('--ckptdir', type=str, help='Path to pretrained checkpoint.')
     parser.add_argument('--output-file', type=str, default=None, help='Path to save prediction results.')
-    parser.add_argument('--transcripts', type=str, default=None,
-                        help='Optional scores.json whose reference words replace the Whisper Medium transcript.')
+    parser.add_argument('--whisper-model', default='large-v3', choices=whisper.available_models(),
+                        help='Whisper model for the main open-response transcript.')
+    parser.add_argument('--transcripts', '--reference-scores', dest='transcripts', type=str, default=None,
+                        help='Optional scores.json whose reference words replace the main Whisper transcript.')
+    parser.add_argument('--open-transcripts', type=str, default=None,
+                        help='JSONL with fixed open-response transcript and audio_id fields.')
     parser.add_argument('--verbose', action='store_true', help='Print each audio prediction (default: disabled).')
 
 
     args = parser.parse_args()
+    if args.transcripts is not None and args.open_transcripts is not None:
+        parser.error('--transcripts and --open-transcripts are mutually exclusive')
     configure_deterministic_inference()
     configure_fairseq_spacy_tokenizer()
 
@@ -82,6 +88,18 @@ def main():
             text = ' '.join(str(word['text']) for word in sample['words'])
             text = remove_pun_except_apostrophe(text).lower()
             transcripts[sample_id] = convert_num_to_word(text)
+    elif args.open_transcripts is not None:
+        transcripts = {}
+        with open(args.open_transcripts, encoding='utf-8') as transcript_file:
+            for line_number, line in enumerate(transcript_file, 1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                sample_id = os.path.splitext(os.path.basename(row['audio_id']))[0]
+                if sample_id in transcripts:
+                    raise ValueError(f'Duplicate transcript for {sample_id} at line {line_number}')
+                text = remove_pun_except_apostrophe(str(row['transcript'])).lower()
+                transcripts[sample_id] = convert_num_to_word(text)
     
     ssl_path = args.fairseq_base_model
     roberta_path = args.fairseq_roberta
@@ -94,7 +112,15 @@ def main():
     word_model.eval()
     whisper_model_s = None
     if transcripts is None:
-        whisper_model_s = whisper.load_model("medium.en")
+        # Convert on CPU first so large-v3 never occupies GPU memory in FP32.
+        whisper_model_s = whisper.load_model(args.whisper_model, device='cpu')
+        if torch.cuda.is_available():
+            whisper_model_s = whisper_model_s.half()
+            # Whisper LayerNorm computes in FP32 and needs FP32 parameters.
+            for module in whisper_model_s.modules():
+                if isinstance(module, nn.LayerNorm):
+                    module.float()
+            whisper_model_s = whisper_model_s.cuda()
     whisper_model_w = whisper.load_model("base.en")
 
     aligment_model = charsiu_forced_aligner(aligner='charsiu/en_w2v2_fc_10ms')
@@ -143,7 +169,7 @@ def main():
 
             wav  = torch.reshape(wav, (-1,))
             if transcripts is None:
-                sen_asr_s = remove_pun_except_apostrophe(get_transcript(wav, whisper_model_s)).lower()
+                sen_asr_s = remove_pun_except_apostrophe(get_transcript(wav, whisper_model_s, language='en')).lower()
                 sen_asr_s = convert_num_to_word(sen_asr_s)
             else:
                 sample_id = os.path.splitext(os.path.basename(filename))[0]

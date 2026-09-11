@@ -11,6 +11,7 @@ from scipy.stats import pearsonr, spearmanr
 
 
 SCORE_PATTERN = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)")
+PCC_RESULTS = {}
 
 
 def parse_score(value):
@@ -109,6 +110,7 @@ def correlation(name, prediction, reference):
 
     pcc = pearsonr(prediction, reference).statistic
     srcc = spearmanr(prediction, reference).statistic
+    PCC_RESULTS[name] = float(pcc)
     print(f"{name:<14} N={len(prediction):>4}  PCC={pcc:>8.4f}  SRCC={srcc:>8.4f}")
 
 
@@ -183,6 +185,7 @@ def main():
         default="Results/model_assessment_multipa_test_mb.txt",
     )
     parser.add_argument("--annotations", default="multipa/annotation.csv")
+    parser.add_argument("--pcc-json")
     args = parser.parse_args()
 
     predictions, invalid_predictions = parse_prediction_file(args.predictions)
@@ -190,9 +193,12 @@ def main():
     print(f"Invalid prediction rows skipped: {invalid_predictions}")
     print(f"Annotation rows with unusable word labels: {invalid_word_rows}")
     evaluate(predictions, annotations)
+    if args.pcc_json:
+        with open(args.pcc_json, "w", encoding="utf-8") as handle:
+            json.dump(PCC_RESULTS, handle, indent=2)
+            handle.write("\n")
 
 
 if __name__ == "__main__":
     main()
-
 
