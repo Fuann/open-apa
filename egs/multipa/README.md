@@ -85,6 +85,13 @@ stage 2 generates the missing rows once with faster-whisper using FP16, beam
 size 5, and temperature 0. Both modes still use Whisper `base.en` for the
 comparison ASR transcript.
 
+The open word metric uses deterministic Levenshtein alignment: matches and
+substitutions contribute to pooled word PCC, while insertions and deletions are
+excluded. Coverage, WER, and M/S/I/D counts are written beside the transcript as
+`*.word-evaluation.json`. Ground-truth Charsiu alignments are no longer required
+for open evaluation; the MultiPA model itself still uses its native alignment
+features during inference.
+
 With data and models prepared:
 
 ```bash

@@ -167,8 +167,6 @@ def main():
             pred_words, target_words = [], []
             for i, key in enumerate(ids):
                 if key in report['failures'] or key in evaluation_failures:
-                    pred_words.extend([[WORD_FALLBACK[m] for m in WORD]] * len(refs[key]['words']))
-                    target_words.extend([[w[m] for m in WORD] for w in refs[key]['words']])
                     continue
                 item = word_evaluation['items'][key]
                 wids = raw_target[i, :, -1].astype(int)
@@ -179,18 +177,18 @@ def main():
                 target_words.extend(item['targets'])
             pred_words = np.asarray(pred_words).reshape(-1, 3)
             target_words = np.asarray(target_words).reshape(-1, 3)
-            result['word_multipa'] = {m: metrics(pred_words[:, i], target_words[:, i]) for i, m in enumerate(WORD)}
+            result['word_open_ms'] = {m: metrics(pred_words[:, i], target_words[:, i]) for i, m in enumerate(WORD)}
         (seed_dir/'metrics.json').write_text(json.dumps(result,indent=2)+'\n')
         all_results[seed_dir.name]=result
     if not all_results:
         raise ValueError('No fresh predictions found')
     summary={}
     lines=[f"Coverage: {len(ids)}/{len(refs)}; missing count: {len(report['missing_ids'])} (IDs in audit.json)",
-           'Word comparison: Hippo sequence alignment and MultiPA timestamp overlap; both cap predictions at 10 and include ASR fallback.' if word_evaluation else 'Legacy native word alignment (not MultiPA); includes fallback.']
+           'Primary open word protocol: deterministic Levenshtein; matches and substitutions included, insertions and deletions excluded.' if word_evaluation else 'Legacy native word alignment (not the open M+S protocol).']
     lines.append('Feature text normalization: ' + report.get('feature_provenance', {}).get('text_normalization', 'legacy Hippo (not recomputed)'))
     lines.append(f'Evaluation alignment fallback: {len(evaluation_failures)} (details in metrics.json)')
     lines.append(f"ASR fallback: {report['fallback_count']}; model predictions: {report['predicted_count']}")
-    groups = (fallback_group, 'word_hippo_sequence', 'word_multipa') if word_evaluation else (fallback_group, 'word_hippo_sequence')
+    groups = (fallback_group, 'word_open_ms') if word_evaluation else (fallback_group, 'word_hippo_sequence')
     for group in groups:
         summary[group]={}
         count = next(iter(next(iter(all_results.values()))[group].values()))['n']
@@ -202,8 +200,10 @@ def main():
                 continue
             summary[group][metric]=dict(pcc_mean=float(np.mean(values)),pcc_std=float(np.std(values)))
             lines.append(f'{metric:14s} {np.mean(values):.4f} ± {np.std(values):.4f}')
-    lines.append('\nSequence: deletions excluded; insertion/substitution targets=0. Timestamp: overlap-mean targets, otherwise 0/5/1; alignment failures use fallback only in the timestamp word group.')
-    report.update(seeds=all_results,summary=summary, main_word_protocols=['hippo_sequence', 'multipa_timestamp_overlap'] if word_evaluation else ['hippo_sequence'])
+    lines.append('\nWord PCC scope: match+substitution. Insertions and deletions are excluded; failed utterances are excluded from word PCC.')
+    report.update(seeds=all_results, summary=summary,
+                  word_pcc_scope='match+substitution',
+                  main_word_protocols=['levenshtein_match_substitution'] if word_evaluation else ['hippo_sequence'])
     (args.exp_dir/'metrics.json').write_text(json.dumps(report,indent=2)+'\n')
     (args.exp_dir/'result.txt').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))

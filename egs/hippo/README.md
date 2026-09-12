@@ -88,6 +88,12 @@ by digit; numeric tokens in mixed sentences use cardinal numbers. G2P also strip
 accents and normalizes tokens. Older features without `text_normalization` retain
 their original normalization; reevaluation alone does not change their inputs.
 
+SpeechOcean762 open word PCC uses deterministic Levenshtein alignment. Exact
+matches and substitutions are evaluated against the aligned reference labels;
+insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are
+cached beside the ASR JSONL as `*.word-evaluation.json`. This evaluation does not
+use Charsiu or ground-truth word timestamps.
+
 ## Checkpoint and failure conventions
 
 The released checkpoints require a phone-ID offset of `+1` before 42-class one-hot

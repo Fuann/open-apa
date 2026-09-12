@@ -293,7 +293,7 @@ if [[ $stage -le 2 && $stop_stage -ge 2 ]]; then
 fi
 
 if [[ $stage -le 3 && $stop_stage -ge 3 ]]; then
-    if [[ $test_data == speechocean762 ]]; then
+    if [[ $test_data == speechocean762 && " ${evaluation_modes[*]} " == *" close "* ]]; then
         CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONHASHSEED=1984 \
         python ./src/align_speechocean762.py \
             --scores "$scores_file" \
@@ -323,10 +323,17 @@ if [[ $stage -le 3 && $stop_stage -ge 3 ]]; then
                     --annotations "$annotation_file" \
                     --pcc-json "$pcc_file" | tee "$result_file"
             else
+                word_evaluation_args=()
+                if [[ $current_mode == open ]]; then
+                    word_evaluation_args=(--open-transcripts "$open_transcript_file"
+                        --word-evaluation-json "${open_transcript_file%.jsonl}.word-evaluation.json")
+                fi
                 python ./src/evaluate_speechocean762.py \
                     --predictions "$prediction_file" \
                     --scores "$scores_file" \
                     --gt-alignments "$gt_alignment_dir" \
+                    --evaluation-mode "$current_mode" \
+                    "${word_evaluation_args[@]}" \
                     --pcc-json "$pcc_file" | tee "$result_file"
             fi
             pcc_files+=("$pcc_file")

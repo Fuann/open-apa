@@ -151,7 +151,16 @@ if ((stage<=2 && stop_stage>=2)); then
 fi
 if ((stage<=3 && stop_stage>=3)); then
   echo "Stage 3: evaluation"
-  python src/prepare_word_evaluation.py --feature-dir "$feature_dir" --output "$exp_dir/word_evaluation.json" --scores "$scores"
-  python src/evaluate_speechocean762.py "${eval_args[@]}" --word-evaluation "$exp_dir/word_evaluation.json"
+  word_evaluation_args=()
+  if [[ $response_mode == open ]]; then
+    transcript_file="$transcript_dir/faster-whisper-${whisper_model}-float16-beam5.jsonl"
+    statistics_file="${transcript_file%.jsonl}.word-evaluation.json"
+    word_evaluation_file="$exp_dir/word_evaluation.json"
+    python src/prepare_word_evaluation.py --feature-dir "$feature_dir" \
+      --output "$word_evaluation_file" --statistics-output "$statistics_file" \
+      --transcript "$transcript_file" --scores "$scores"
+    word_evaluation_args=(--word-evaluation "$word_evaluation_file")
+  fi
+  python src/evaluate_speechocean762.py "${eval_args[@]}" "${word_evaluation_args[@]}"
 fi
 echo "Done through stage $stop_stage. Outputs: $exp_dir"
