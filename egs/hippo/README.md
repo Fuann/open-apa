@@ -11,10 +11,15 @@ locations. The default environment is `multipa`; override it with
 `MULTIPA_CONDA_ENV`.
 
 Model files and feature-model caches are stored under `pretrained-models/`.
-Place the released checkpoints in `pretrained-models/hippo/{0,1,2,3,4}/models/`,
-each named `best_audio_model.pth`. The original 40-token CTC-GOP model and its
-matching processor must be provided in `ctc-gop/checkpoint-8000/` and
-`ctc-gop/processor_config_gop/`. Generic wav2vec2 weights are not interchangeable.
+Stage 0 downloads the released checkpoints from [fuann/hippo](https://huggingface.co/fuann/hippo)
+into `pretrained-models/hippo/{0,1,2,3,4}/models/best_audio_model.pth`.
+It also downloads the original 40-token CTC-GOP model and matching processor
+from [fuann/ctc-gop](https://huggingface.co/fuann/ctc-gop) into
+`pretrained-models/ctc-gop/checkpoint-8000/` and
+`pretrained-models/ctc-gop/processor_config_gop/`.
+The CTC-GOP files originally come from
+[CTC-based-GOP](https://github.com/frank613/CTC-based-GOP/tree/main/is24/models).
+Generic wav2vec2 weights are not interchangeable.
 
 The timestamp word evaluator also requires the sibling `../multipa` recipe,
 its Charsiu dependencies, cached Charsiu models under `~/.cache/huggingface/`,
@@ -50,7 +55,7 @@ Extraction and inference default to CPU. `--gpu N` selects one CUDA device;
 
 | Stage | Work |
 | --- | --- |
-| 0 | Download feature models and prepare raw test audio/labels if absent |
+| 0 | Download HiPPO, CTC-GOP and feature models; prepare raw test audio/labels if absent |
 | 1 | Resolve transcripts and extract GOP, SSL, language features and labels |
 | 2 | Check feature provenance, audit inputs, and run selected checkpoints |
 | 3 | Prepare word alignment targets and write evaluation reports |

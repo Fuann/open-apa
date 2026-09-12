@@ -120,6 +120,19 @@ extract_args=(--models "$models" --whisper-model "$whisper_model" --transcript-d
   --threads "$threads" --max-phones "$max_phones" --limit "$limit")
 if ((stage<=0 && stop_stage>=0)); then
   echo "Stage 0: models and raw SpeechOcean762 data"
+  python - "$models" <<'PY_DOWNLOAD'
+import sys
+from pathlib import Path
+from huggingface_hub import snapshot_download
+
+models = Path(sys.argv[1])
+for repo, directory, patterns in (
+    ('fuann/hippo', 'hippo', [f'{seed}/models/*' for seed in range(5)]),
+    ('fuann/ctc-gop', 'ctc-gop', ['checkpoint-8000/*', 'processor_config_gop/*']),
+):
+    snapshot_download(repo_id=repo, local_dir=str(models / directory),
+                      allow_patterns=patterns)
+PY_DOWNLOAD
   python src/feats_extract/extract_features.py download "${extract_args[@]}"
   if [[ ! -d $wav_dir || ! -f $scores ]]; then
     if [[ $wav_dir != data/speechocean762/wav || $scores != data/speechocean762/scores.json ]]; then
