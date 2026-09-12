@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
+
+# Run the released Hippo model on the SpeechOcean762 test set.
+#
+# Stages:
+#   0: Download data and pretrained models
+#   1: Extract features using the selected response transcript
+#   2: Audit features and run Hippo inference
+#   3: Evaluate utterance- and word-level PCC
+
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Experiment configuration
 stage=0
 stop_stage=3
 whisper_model=
-transcript_dir=data/speechocean762/transcript/test
+transcript_dir=references/speechocean762/test/transcripts
 response_mode=open
 device=cpu
 gpu=
@@ -12,16 +23,24 @@ threads=4
 batch_size=32
 max_phones=
 limit=0
-seeds="0 1 2 3 4"
 wav_dir=data/speechocean762/wav
 scores=data/speechocean762/scores.json
 exp_dir=
 feature_dir=
+
+# Model locations
+hippo_repo=fuann/hippo
+ctc_gop_repo=fuann/ctc-gop
+models=$PWD/pretrained-models
+checkpoint=$models/hippo/best_audio_model.pth
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
 usage() {
   cat <<EOF
 Usage: bash run.sh [options]
   --whisper-model NAME  Select one model (default: medium.en then large-v3)
-  --transcript-dir PATH Transcript JSONL directory
   --response-mode MODE  open or closed (default: open)
   --stage N            First stage (default: 0)
   --stop-stage N       Last stage (default: 3)
@@ -31,13 +50,12 @@ Usage: bash run.sh [options]
   --batch-size N       Hippo inference batch size (default: 32)
   --max-phones N       Padded sequence length (default: 65 open / 50 closed)
   --limit N            First N utterances for smoke tests (default: 0 = all)
-  --seeds "0 1 ..."     Released Hippo checkpoints (default: all five)
   --wav-dir PATH       Input mono 16 kHz WAV directory
   --scores PATH        SpeechOcean762 scores.json
   --exp-dir PATH       Output directory; required when resuming stage 2 or 3
   --feature-dir PATH   Fresh feature output (default: <exp-dir>/features)
 
-Stages: 0 download models/prepare raw test data; 1 transcripts (generate if missing) and all features;
+Stages: 0 download models/prepare raw test data; 1 load provided transcripts and extract all features;
         2 audit and Hippo inference; 3 evaluation.
 Default runs use stable decode names and refuse to overwrite existing features.
 Models and model download caches are stored under pretrained-models/.
@@ -55,7 +73,6 @@ while (($#)); do
     --stage) stage=$2;;
     --stop-stage) stop_stage=$2;;
     --whisper-model) whisper_model=$2;;
-    --transcript-dir) transcript_dir=$2;;
     --response-mode) response_mode=$2;;
     --device) device=$2;;
     --gpu) gpu=$2;;
@@ -63,7 +80,6 @@ while (($#)); do
     --batch-size) batch_size=$2;;
     --max-phones) max_phones=$2;;
     --limit) limit=$2;;
-    --seeds) seeds=$2;;
     --wav-dir) wav_dir=$2;;
     --scores) scores=$2;;
     --exp-dir) exp_dir=$2;;
@@ -82,10 +98,6 @@ done
 ((stage<=stop_stage && stop_stage<=3 && threads>0 && batch_size>0 && max_phones>0)) || { echo "Invalid stage or numeric settings" >&2; exit 2; }
 [[ $response_mode == open || $response_mode == closed ]] || { echo "Invalid response mode" >&2; exit 2; }
 [[ -z $whisper_model || $whisper_model =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Use a Whisper model name, not a file path" >&2; exit 2; }
-[[ -n $seeds ]] || { echo "At least one seed is required" >&2; exit 2; }
-for seed in $seeds; do
-  [[ $seed =~ ^[0-4]$ ]] || { echo "Unknown released seed: $seed" >&2; exit 2; }
-done
 if [[ -n $gpu ]]; then
   [[ $gpu =~ ^[0-9]+$ ]] || { echo "Invalid GPU index" >&2; exit 2; }
   device=cuda:0
@@ -110,28 +122,35 @@ if [[ -z $whisper_model ]]; then
 fi
 . ./path.sh
 
+if [[ $response_mode == open ]]; then
+  transcript_file="$transcript_dir/faster-whisper-${whisper_model}-float16-beam5.jsonl"
+  [[ -f $transcript_file ]] || {
+    echo "Missing fixed ASR transcripts: $transcript_file" >&2
+    exit 1
+  }
+fi
+
 decode_name=decode_speechocean762_$response_mode
 [[ $response_mode != open ]] || decode_name=${decode_name}_$whisper_model
 exp_dir=${exp_dir:-exp/hippo/$decode_name}
 feature_dir=${feature_dir:-$exp_dir/features}
-models=$PWD/pretrained-models
 extract_args=(--models "$models" --whisper-model "$whisper_model" --transcript-dir "$transcript_dir" --response-mode "$response_mode"
   --wav-dir "$wav_dir" --scores "$scores" --output "$feature_dir" --device "$device"
   --threads "$threads" --max-phones "$max_phones" --limit "$limit")
 if ((stage<=0 && stop_stage>=0)); then
-  echo "Stage 0: models and raw SpeechOcean762 data"
-  python - "$models" <<'PY_DOWNLOAD'
+  echo -e "${GREEN}Stage 0: Download data and pretrained models${NC}"
+  command -v hf >/dev/null 2>&1 || { echo "Missing command: hf" >&2; exit 1; }
+  mkdir -p "$models/hippo" "$models/ctc-gop"
+  hf download "$hippo_repo" best_audio_model.pth \
+    --local-dir "$models/hippo" --quiet
+  python - "$models" "$ctc_gop_repo" <<'PY_DOWNLOAD'
 import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
 models = Path(sys.argv[1])
-for repo, directory, patterns in (
-    ('fuann/hippo', 'hippo', [f'{seed}/models/*' for seed in range(5)]),
-    ('fuann/ctc-gop', 'ctc-gop', ['checkpoint-8000/*', 'processor_config_gop/*']),
-):
-    snapshot_download(repo_id=repo, local_dir=str(models / directory),
-                      allow_patterns=patterns)
+snapshot_download(repo_id=sys.argv[2], local_dir=str(models / 'ctc-gop'),
+                  allow_patterns=['checkpoint-8000/*', 'processor_config_gop/*'])
 PY_DOWNLOAD
   python src/feats_extract/extract_features.py download "${extract_args[@]}"
   if [[ ! -d $wav_dir || ! -f $scores ]]; then
@@ -142,20 +161,19 @@ PY_DOWNLOAD
   fi
 fi
 if ((stage<=1 && stop_stage>=1)); then
-  echo "Stage 1: transcripts, fresh GOP, SSL and ModernBERT features"
+  echo -e "${GREEN}Stage 1: Extract GOP, SSL, and ModernBERT features${NC}"
   mkdir -p "$exp_dir"
   python -u src/feats_extract/extract_features.py extract "${extract_args[@]}" 2>&1 | tee "$exp_dir/features.log"
 fi
 eval_args=(--manifest "$feature_dir/et.csv" --scores "$scores" --feature-dir "$feature_dir"
-  --exp-dir "$exp_dir" --response-mode "$response_mode" --asr-variant fresh --seeds "$seeds")
+  --exp-dir "$exp_dir" --response-mode "$response_mode" --asr-variant fresh)
 if ((stop_stage>=2)); then
   python src/feats_extract/extract_features.py check "${extract_args[@]}"
 fi
 word_evaluation_args=()
 if ((stop_stage>=2)); then
   if [[ $response_mode == open ]]; then
-    transcript_file="$transcript_dir/faster-whisper-${whisper_model}-float16-beam5.jsonl"
-    statistics_file="${transcript_file%.jsonl}.word-evaluation.json"
+    statistics_file="$exp_dir/word_evaluation.statistics.json"
     word_evaluation_file="$exp_dir/word_evaluation.json"
     python src/prepare_word_evaluation.py --feature-dir "$feature_dir" \
       --output "$word_evaluation_file" --statistics-output "$statistics_file" \
@@ -164,19 +182,18 @@ if ((stop_stage>=2)); then
   fi
 fi
 if ((stage<=2 && stop_stage>=2)); then
-  echo "Stage 2: feature audit and Hippo inference"
+  echo -e "${GREEN}Stage 2: Audit features and run Hippo inference${NC}"
+  [[ -f $checkpoint ]] || { echo "Missing checkpoint: $checkpoint" >&2; exit 1; }
   python src/evaluate_speechocean762.py "${eval_args[@]}" --audit-only
-  for seed in $seeds; do
-    mkdir -p "$exp_dir/$seed"
-    python -u inference.py --seed "$seed" --feature-dir "$feature_dir" \
-      --checkpoint "$models/hippo/$seed/models/best_audio_model.pth" --exp-dir "$exp_dir/$seed" \
-      --response-mode "$response_mode" --asr-variant fresh --batch_size "$batch_size" --threads "$threads" --device "$device" \
-      --scores "$scores" "${word_evaluation_args[@]}" \
-      2>&1 | tee "$exp_dir/$seed/inference.log"
-  done
+  python -u inference.py --seed 0 --feature-dir "$feature_dir" \
+    --checkpoint "$checkpoint" --exp-dir "$exp_dir" \
+    --response-mode "$response_mode" --asr-variant fresh \
+    --batch_size "$batch_size" --threads "$threads" --device "$device" \
+    --scores "$scores" "${word_evaluation_args[@]}" \
+    2>&1 | tee "$exp_dir/inference.log"
 fi
 if ((stage<=3 && stop_stage>=3)); then
-  echo "Stage 3: evaluation"
+  echo -e "${GREEN}Stage 3: Evaluate utterance- and word-level PCC${NC}"
   python src/evaluate_speechocean762.py "${eval_args[@]}" "${word_evaluation_args[@]}"
 fi
-echo "Done through stage $stop_stage. Outputs: $exp_dir"
+echo -e "${GREEN}Done through stage $stop_stage. Outputs: $exp_dir${NC}"

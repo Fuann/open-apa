@@ -91,7 +91,6 @@ def main():
     p.add_argument('--asr-variant',choices=['med','large','small','fresh'],default='med')
     p.add_argument('--word-evaluation', type=Path)
     p.add_argument('--audit-only',action='store_true')
-    p.add_argument('--seeds',default='0 1 2 3 4')
     args=p.parse_args()
     ids,refs,report=audit(args)
     if args.audit_only:
@@ -105,14 +104,13 @@ def main():
     evaluation_failures = word_evaluation.get('failures', {}) if word_evaluation else {}
     report['evaluation_failures'] = evaluation_failures
     all_results={}
-    for seed in args.seeds.split():
-        seed_dir = args.exp_dir / seed
+    for seed_dir in (args.exp_dir,):
         if not (seed_dir/'preds/utt_pred.npy').exists():
-            raise FileNotFoundError(f'Missing predictions for requested seed: {seed}')
+            raise FileNotFoundError(f'Missing predictions: {seed_dir}')
         if args.asr_variant == 'fresh':
             provenance = json.loads((seed_dir/'feature_provenance.json').read_text())
             if provenance['features_sha256'] != hashlib.sha256((args.feature_dir/'features.json').read_bytes()).hexdigest():
-                raise ValueError(f'Predictions use different features: seed {seed}')
+                raise ValueError('Predictions use different features')
         pred_dir=seed_dir/'preds'
         up=np.load(pred_dir/'utt_pred.npy')*5
         ut=np.load(pred_dir/'utt_target.npy')*5
@@ -169,7 +167,7 @@ def main():
                 raw, raw_target, ids, word_evaluation, report['failures'])
             result['word_open_ms'] = {m: metrics(pred_words[:, i], target_words[:, i]) for i, m in enumerate(WORD)}
         (seed_dir/'metrics.json').write_text(json.dumps(result,indent=2)+'\n')
-        all_results[seed_dir.name]=result
+        all_results['checkpoint']=result
     if not all_results:
         raise ValueError('No fresh predictions found')
     summary={}
@@ -179,19 +177,19 @@ def main():
     lines.append(f'Evaluation alignment fallback: {len(evaluation_failures)} (details in metrics.json)')
     lines.append(f"ASR fallback: {report['fallback_count']}; model predictions: {report['predicted_count']}")
     groups = (fallback_group, 'word_open_ms') if word_evaluation else (fallback_group, 'word_hippo_sequence')
+    checkpoint_result = all_results['checkpoint']
     for group in groups:
         summary[group]={}
-        count = next(iter(next(iter(all_results.values()))[group].values()))['n']
-        lines.append('\n'+group+f' PCC (N={count}; mean ± population SD across checkpoints)')
-        for metric in next(iter(all_results.values()))[group]:
-            values=[r[group][metric]['pcc'] for r in all_results.values()]
-            values=[x for x in values if x is not None]
-            if not values:
+        count = next(iter(checkpoint_result[group].values()))['n']
+        lines.append('\n'+group+f' PCC (N={count})')
+        for metric, metric_result in checkpoint_result[group].items():
+            value = metric_result['pcc']
+            if value is None:
                 continue
-            summary[group][metric]=dict(pcc_mean=float(np.mean(values)),pcc_std=float(np.std(values)))
-            lines.append(f'{metric:14s} {np.mean(values):.4f} ± {np.std(values):.4f}')
+            summary[group][metric]=dict(pcc=value)
+            lines.append(f'{metric:14s} {value:.4f}')
     lines.append('\nWord PCC scope: match+substitution. Insertions and deletions are excluded; failed utterances are excluded from word PCC.')
-    report.update(seeds=all_results, summary=summary,
+    report.update(result=checkpoint_result, summary=summary,
                   word_pcc_scope='match+substitution',
                   main_word_protocols=['levenshtein_match_substitution'] if word_evaluation else ['hippo_sequence'])
     (args.exp_dir/'metrics.json').write_text(json.dumps(report,indent=2)+'\n')

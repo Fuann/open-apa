@@ -1,18 +1,27 @@
 # HiPPO SpeechOcean762 evaluation
 
-Extract pronunciation features from audio, run five released HiPPO checkpoints,
+Extract pronunciation features from audio, run the released HiPPO checkpoint,
 and evaluate utterance and word scores in open or closed response mode.
 
 ## Setup
 
-Use a Conda environment with `requirements.txt` installed. `path.sh` discovers
-Conda from `PATH`, `CONDA_EXE`, or the usual `~/miniconda3` and `~/miniforge3`
-locations. The default environment is `multipa`; override it with
-`MULTIPA_CONDA_ENV`.
+Create the dedicated environment and install the dependencies with:
+
+```bash
+conda create -n hippo python=3.9
+conda activate hippo
+python -m pip install -r requirements.txt
+```
+
+`path.sh` activates `hippo` automatically. It discovers Conda from `PATH`,
+`CONDA_EXE`, or the usual `~/miniconda3` and `~/miniforge3` locations. Override
+the executable with `HIPPO_CONDA_EXE` or the environment name with
+`HIPPO_CONDA_ENV`. Model caches remain inside this recipe, while Hugging Face
+authentication uses the token created by the standard `hf auth login` command.
 
 Model files and feature-model caches are stored under `pretrained-models/`.
-Stage 0 downloads the released checkpoints from [fuann/hippo](https://huggingface.co/fuann/hippo)
-into `pretrained-models/hippo/{0,1,2,3,4}/models/best_audio_model.pth`.
+Stage 0 downloads the released checkpoint from [fuann/hippo](https://huggingface.co/fuann/hippo)
+into `pretrained-models/hippo/best_audio_model.pth`.
 It also downloads the original 40-token CTC-GOP model and matching processor
 from [fuann/ctc-gop](https://huggingface.co/fuann/ctc-gop) into
 `pretrained-models/ctc-gop/checkpoint-8000/` and
@@ -45,7 +54,7 @@ bash run.sh --stage 2 --whisper-model large-v3 \
   --exp-dir exp/hippo/decode_speechocean762_open_large-v3
 
 # CPU smoke run in a separate directory.
-bash run.sh --limit 2 --seeds 0 --whisper-model medium.en \
+bash run.sh --limit 2 --whisper-model medium.en \
   --exp-dir exp/hippo/smoke
 ```
 
@@ -56,8 +65,8 @@ Extraction and inference default to CPU. `--gpu N` selects one CUDA device;
 | Stage | Work |
 | --- | --- |
 | 0 | Download HiPPO, CTC-GOP and feature models; prepare raw test audio/labels if absent |
-| 1 | Resolve transcripts and extract GOP, SSL, language features and labels |
-| 2 | Check feature provenance, audit inputs, and run selected checkpoints |
+| 1 | Load provided transcripts and extract GOP, SSL, language features and labels |
+| 2 | Check feature provenance, audit inputs, and run the released checkpoint |
 | 3 | Prepare word alignment targets and write evaluation reports |
 
 Default experiment directories are:
@@ -74,18 +83,19 @@ and feature configuration. After changing the model, resume from stage 2.
 
 ## Transcripts and normalization
 
-Open mode uses the model-specific JSONL files under
-`data/speechocean762/transcript/test/`, matched by `audio_id`:
+Open mode uses the model-specific JSONL files in the repository-level shared
+`references` directory, matched by `audio_id`. When `path.sh` is sourced, it
+creates `references -> ../../references` in this recipe directory:
 
 - `faster-whisper-medium.en-float16-beam5.jsonl`
 - `faster-whisper-large-v3-float16-beam5.jsonl`
 
-Only missing files/IDs trigger ASR generation. Supplied rows and empty transcripts
-are retained. Generation uses faster-whisper 1.2.1 / CTranslate2 4.8.1, CUDA
+The files were generated with faster-whisper 1.2.1 / CTranslate2 4.8.1, CUDA
 float16, beam size 5, temperature 0, seed 0, English transcription,
 `condition_on_previous_text=False`, `vad_filter=False`, and word timestamps.
-Missing-transcript ASR requires CUDA even when downstream processing uses CPU.
-Settings and transcript provenance are recorded in `features/features.json`.
+`run.sh` reports an error when the selected fixed transcript is unavailable;
+it does not generate or modify shared references. Settings and transcript
+provenance are recorded in `features/features.json`.
 
 Text normalization follows MultiPA: remove punctuation except apostrophes,
 lowercase, then convert numeric tokens. All-numeric sentences are spelled digit
@@ -96,11 +106,12 @@ their original normalization; reevaluation alone does not change their inputs.
 SpeechOcean762 open word PCC uses deterministic Levenshtein alignment. Exact
 matches and substitutions are evaluated against the aligned reference labels;
 insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are
-cached beside the ASR JSONL as `*.word-evaluation.json`. Stage 2's printed word PCC and `result.csv` use this same protocol as stage 3's
+written to `word_evaluation.statistics.json` in the experiment directory.
+Stage 2's printed word PCC and `result.csv` use this same protocol as stage 3's
 `word_open_ms`: predictions are capped at 10, and failed utterances are excluded.
-Stage 2 reports one checkpoint; stage 3 reports the mean and population standard
-deviation across checkpoints. Targets are prepared before stage 2, including
-runs with `--stop-stage 2`. Direct open-response calls to `inference.py` require
+Stages 2 and 3 report PCC directly for the released checkpoint; no cross-seed
+mean or standard deviation is computed. Targets are prepared before stage 2,
+including runs with `--stop-stage 2`. Direct open-response calls to `inference.py` require
 `--word-evaluation` and the matching `--scores` (if using custom scores).
 The saved native prediction/target arrays and `word_native` diagnostic retain
 the original labels. This evaluation does not use Charsiu or ground-truth word
@@ -108,10 +119,10 @@ timestamps.
 
 ## Checkpoint and failure conventions
 
-The released checkpoints require a phone-ID offset of `+1` before 42-class one-hot
+The released checkpoint requires a phone-ID offset of `+1` before 42-class one-hot
 encoding. `src/models/hippo.py` implements this convention. Registered parameters
 needed for strict checkpoint loading are retained, including auxiliary layers
-unused by inference. Each seed records the offset, checkpoint hash, model source
+unused by inference. The run records the offset, checkpoint hash, model source
 hash and feature fingerprint in `feature_provenance.json`.
 
 Open transcripts with no text, no phones, or more than `--max-phones` phones use
@@ -133,9 +144,9 @@ sequence-word report retains available model predictions.
 
 ## Reading results
 
-`result.txt` and `metrics.json.summary` show PCC means and population standard
-deviations over the requested checkpoints. `--limit` is for smoke tests; full
-benchmark evaluation covers 2,500 test utterances.
+`result.txt` and `metrics.json.summary` show PCC for the released checkpoint.
+`--limit` is for smoke tests; full benchmark evaluation covers 2,500 test
+utterances.
 
 | Group | Evaluation rule |
 | --- | --- |
@@ -146,7 +157,7 @@ benchmark evaluation covers 2,500 test utterances.
 Both word groups cap model predictions at 10 and include ASR fallback. Charsiu
 may omit unaligned words, so their sample counts can differ. Timestamp targets
 and selected word indices are cached in `word_evaluation.json` with input
-fingerprints. Native uncapped, successful-only metrics remain in per-seed JSON
+fingerprints. Native uncapped, successful-only metrics remain in `metrics.json`
 for diagnostics. Error metrics use 0–10 for utterances/words and 0–2 for phones.
 
 | File | Content |
@@ -155,9 +166,9 @@ for diagnostics. Error metrics use 0–10 for utterances/words and 0–2 for pho
 | `features/features.json` | Feature provenance and fingerprints |
 | `audit.json` | Input coverage, labels and array inventory |
 | `result.txt` | Main PCC tables |
-| `metrics.json` | Aggregate and per-checkpoint metrics |
-| `{seed}/predictions.jsonl` | Per-utterance/word scores and fallback reasons |
-| `{seed}/preds/` | Raw model predictions and targets |
+| `metrics.json` | Checkpoint metrics and report metadata |
+| `predictions.jsonl` | Per-utterance/word scores and fallback reasons |
+| `preds/` | Raw model predictions and targets |
 
 ## Source layout and tests
 
