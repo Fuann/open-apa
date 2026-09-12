@@ -5,7 +5,6 @@ import gc
 import json
 import argparse
 import random
-import traceback
 import torch
 import fairseq
 import whisper
@@ -213,9 +212,11 @@ def main():
                 prediction.write(output+'\n')
 
             except Exception as e:
-                print(f"Inference failed for {filename}: {e}")
-                traceback.print_exc()
                 valid = 'F'
+                tqdm.write(
+                    f"{filename} failed: {type(e).__name__}: {e}; "
+                    "marked as Valid:F"
+                )
                 output = "{}; A:{}; F:{}; P:{}; T:{}; Valid:{}; ASR_s:{}; ASR_w:{}; w_a:{}; w_s:{}; w_t:{}; alignment:{}".format(filename, '', '', '', '', valid, sen_asr_s, sen_asr_w, '', '', '', '')
                 prediction.write(output+'\n')
                 continue

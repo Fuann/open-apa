@@ -12,6 +12,7 @@ from scipy.stats import pearsonr, spearmanr
 UTT = ('accuracy', 'completeness', 'fluency', 'prosodic', 'total')
 WORD = ('accuracy', 'stress', 'total')
 from feats_extract.feature_utils import UTT_FALLBACK, WORD_FALLBACK
+from word_evaluation import load_word_evaluation, open_word_arrays
 
 
 def metrics(pred, target):
@@ -95,12 +96,12 @@ def main():
     ids,refs,report=audit(args)
     if args.audit_only:
         return
-    word_evaluation = json.loads(args.word_evaluation.read_text()) if args.word_evaluation else None
-    if word_evaluation:
-        expected = dict(manifest=hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
-                        scores=hashlib.sha256(args.scores.read_bytes()).hexdigest())
-        if word_evaluation['fingerprint'] != expected:
-            raise ValueError('Word evaluation manifest/scores mismatch')
+    word_evaluation = None
+    if args.word_evaluation:
+        word_evaluation, word_ids = load_word_evaluation(
+            args.word_evaluation, args.manifest, args.scores)
+        if word_ids != ids:
+            raise ValueError('Word evaluation/manifest ID order mismatch')
     evaluation_failures = word_evaluation.get('failures', {}) if word_evaluation else {}
     report['evaluation_failures'] = evaluation_failures
     all_results={}
@@ -164,19 +165,8 @@ def main():
                 words=[dict(word_index=int(w),scores=dict(zip(WORD,raw[i,wids==w].mean(0).tolist()))) for w in np.unique(wids[wids>=0])]
                 handle.write(json.dumps(dict(id=key,valid=True,fallback=False,utterance=dict(zip(UTT,up[i].tolist())),words=words))+'\n')
         if word_evaluation:
-            pred_words, target_words = [], []
-            for i, key in enumerate(ids):
-                if key in report['failures'] or key in evaluation_failures:
-                    continue
-                item = word_evaluation['items'][key]
-                wids = raw_target[i, :, -1].astype(int)
-                unique = np.unique(wids[wids >= 0])
-                if unique.tolist() != list(range(len(item['words']))):
-                    raise ValueError(f'Word evaluation/prediction token mismatch: {key}')
-                pred_words.extend(np.minimum(10., raw[i, wids == w].mean(0)) for w in item.get('score_indices', unique))
-                target_words.extend(item['targets'])
-            pred_words = np.asarray(pred_words).reshape(-1, 3)
-            target_words = np.asarray(target_words).reshape(-1, 3)
+            pred_words, target_words = open_word_arrays(
+                raw, raw_target, ids, word_evaluation, report['failures'])
             result['word_open_ms'] = {m: metrics(pred_words[:, i], target_words[:, i]) for i, m in enumerate(WORD)}
         (seed_dir/'metrics.json').write_text(json.dumps(result,indent=2)+'\n')
         all_results[seed_dir.name]=result

@@ -96,8 +96,15 @@ their original normalization; reevaluation alone does not change their inputs.
 SpeechOcean762 open word PCC uses deterministic Levenshtein alignment. Exact
 matches and substitutions are evaluated against the aligned reference labels;
 insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are
-cached beside the ASR JSONL as `*.word-evaluation.json`. This evaluation does not
-use Charsiu or ground-truth word timestamps.
+cached beside the ASR JSONL as `*.word-evaluation.json`. Stage 2's printed word PCC and `result.csv` use this same protocol as stage 3's
+`word_open_ms`: predictions are capped at 10, and failed utterances are excluded.
+Stage 2 reports one checkpoint; stage 3 reports the mean and population standard
+deviation across checkpoints. Targets are prepared before stage 2, including
+runs with `--stop-stage 2`. Direct open-response calls to `inference.py` require
+`--word-evaluation` and the matching `--scores` (if using custom scores).
+The saved native prediction/target arrays and `word_native` diagnostic retain
+the original labels. This evaluation does not use Charsiu or ground-truth word
+timestamps.
 
 ## Checkpoint and failure conventions
 

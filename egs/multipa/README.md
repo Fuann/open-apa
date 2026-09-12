@@ -22,7 +22,6 @@ egs/multipa/
     ├── evaluate_speechocean762.py
     ├── prepare_open_transcripts.py
     ├── prepare_speechocean762.py
-    ├── summarize_pcc.py
     └── supporting model/alignment modules
 ```
 
@@ -40,6 +39,16 @@ The pip version constraint is required by `fairseq==0.12.2`: its OmegaConf
 2.0.x dependency contains legacy metadata that pip 24.1 and newer reject. If a
 previous installation failed with `ResolutionImpossible`, downgrade pip with
 the command above and rerun the requirements installation.
+
+`requirements.txt` also pins NumPy 1.26.4 because this legacy stack is not ABI
+compatible with NumPy 2.x. If the environment was already installed with
+NumPy 2.x and reports `numpy.dtype size changed`, repair the compiled packages
+with:
+
+```bash
+python -m pip install --force-reinstall "numpy==1.26.4" pandas pyarrow
+python -m pip check
+```
 
 
 ### Usage:
@@ -73,16 +82,24 @@ bash run.sh --test-data speechocean762
 Select only one mode when needed:
 
 ```bash
-bash run.sh --test-data speechocean762 --evaluation-mode close
-bash run.sh --test-data speechocean762 --evaluation-mode open
+bash run.sh --test-data speechocean762 --response-mode close
+bash run.sh --test-data speechocean762 --response-mode open
 ```
 
 SpeechOcean762 close uses the dataset's ground-truth transcript as the
-reference. SpeechOcean762 open uses a fixed faster-whisper transcript from
-`data/speechocean762/transcript/test`. The default is `medium.en`; `large-v3`
-is also supported. If the selected transcript file is absent or incomplete,
-stage 2 generates the missing rows once with faster-whisper using FP16, beam
-size 5, and temperature 0. Both modes still use Whisper `base.en` for the
+reference. MultiPA open and SpeechOcean762 open use fixed faster-whisper ASR
+transcripts under the repository-level `references` directory. When
+`path.sh` is sourced, it creates `references -> ../../references` in this
+recipe directory. The default ASR transcript is `medium.en`; `large-v3` is
+also selectable with `--whisper-model`. The required files are:
+
+```text
+references/multipa/transcripts/faster-whisper-<model>-float16-beam5.jsonl
+references/speechocean762/test/transcripts/faster-whisper-<model>-float16-beam5.jsonl
+```
+
+If `references` already exists but is not that symlink, rename or remove it
+before running `run.sh`. Both modes still use Whisper `base.en` for the
 comparison ASR transcript.
 
 The open word metric uses deterministic Levenshtein alignment: matches and
@@ -95,33 +112,30 @@ features during inference.
 With data and models prepared:
 
 ```bash
-bash run.sh --stage 2 --test-data speechocean762 --evaluation-mode open --whisper-model medium.en
+bash run.sh --stage 2 --test-data speechocean762 --response-mode open --whisper-model medium.en
 ```
 
-`--response-mode` is an alias for `--evaluation-mode`; `closed` is accepted as
-an alias for `close`.
+`closed` is accepted as an alias for `close`.
 
 
-The five assessment checkpoints are downloaded from the private model repo
-`fuann/multipa-model` and kept under `pretrained-models/multipa-model/{0..4}`.
-Predictions are separated by seed. For example, the default SpeechOcean762 open
-configuration writes to:
+The released assessment checkpoint is downloaded from `yuwchen/multipa` and
+extracted under `pretrained-models/model_assessment_val9_r1`. For example, the
+default SpeechOcean762 open configuration writes to:
 
 ```text
-exp/multipa-model/0/decode_speechocean762_open_faster-whisper-medium.en-float16-beam5/
+exp/model_assessment_val9_r1/decode_speechocean762_open_faster-whisper-medium.en-float16-beam5/
 ├── test_mb.txt
-├── result.txt
-└── pcc.json
+└── result.txt
 ```
 
-Stage 3 evaluates all five seeds and writes PCC mean and sample standard
-deviation to `exp/multipa-model/evaluate_*/result_mean_std.txt`.
+Stage 3 reports the checkpoint's PCC directly in each decode directory's
+`result.txt`; it does not aggregate mean or standard deviation across seeds.
 
 ## Implementation results
 
 Model: `model_assessment_val9_r1`
 
-The reported open results use Whisper `medium.en`, not the new `large-v3` default.
+The reported open results use Whisper `medium.en`.
 All values are Pearson correlation coefficients (PCC) from the corresponding
 `exp/model_assessment_val9_r1/decode_*/result.txt` files.
 

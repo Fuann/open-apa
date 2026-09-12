@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / ".deps"))
 
 
 from feats_extract.feature_utils import UTT_FALLBACK
+from word_evaluation import load_word_evaluation, open_word_arrays
 
 import argparse
 import torch
@@ -38,6 +39,8 @@ parser.add_argument("--response-mode", choices=["open", "closed"], default="open
 parser.add_argument("--asr-variant", choices=["med", "large", "small", "fresh"], default="med")
 parser.add_argument("--threads", type=int, default=4)
 parser.add_argument("--device", default="cpu")
+parser.add_argument("--word-evaluation", type=Path, help="Prepared Levenshtein M+S targets (required for open response)")
+parser.add_argument("--scores", type=Path, default=ROOT / "data/speechocean762/scores.json")
 
 # just to generate the header for the result.csv
 def gen_result_header():
@@ -66,6 +69,8 @@ def infer(audio_model, test_open_loader, args):
     print('-------------------openend test-------------------')
     print('Phone: Test MSE: {:.3f}, CORR: {:.3f}'.format(te_mse.item(), te_corr))
     print('Utterance:, ACC: {:.3f}, COM: {:.3f}, FLU: {:.3f}, PROC: {:.3f}, Total: {:.3f}'.format(te_utt_corr[0], te_utt_corr[1], te_utt_corr[2], te_utt_corr[3], te_utt_corr[4]))
+    if args.response_mode == 'open':
+        print('Word protocol: Levenshtein M+S; insertions, deletions and failed utterances excluded; scores capped at 10.')
     print('Word:, ACC: {:.3f}, Stress: {:.3f}, Total: {:.3f}'.format(te_word_corr[0], te_word_corr[1], te_word_corr[2]))
 
     result_open[0, :6] = [0, tr_mse, tr_corr, te_mse, te_corr, 0]
@@ -168,6 +173,14 @@ def validate(audio_model, val_loader, args):
         np.save(args.exp_dir + '/preds/word_phone_pred.npy', A_word)
         np.save(args.exp_dir + '/preds/word_phone_target.npy', A_word_target)
 
+    if args.response_mode == 'open':
+        prediction, target = open_word_arrays(
+            A_word.numpy() * 5, A_word_target.numpy(), args.word_ids,
+            args.word_evaluation_data, args.word_failures)
+        word_mse = [float(np.mean((prediction[:, i] - target[:, i]) ** 2))
+                    if len(prediction) else float('nan') for i in range(3)]
+        word_corr = [safe_corr(prediction[:, i], target[:, i]) for i in range(3)]
+        print(f'Open word evaluation: N={len(prediction)}')
     return phn_mse, phn_corr, utt_mse, utt_corr, word_mse, word_corr
 
 def safe_corr(prediction, target):
@@ -292,6 +305,12 @@ class GoPDataset(Dataset):
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    if args.response_mode == 'open':
+        if args.word_evaluation is None:
+            parser.error('--word-evaluation is required for open response; use run.sh --stage 2 to prepare it')
+        args.word_evaluation_data, args.word_ids = load_word_evaluation(
+            args.word_evaluation, args.feature_dir / 'et.csv', args.scores)
+        args.word_failures = json.loads((args.feature_dir / 'features.json').read_text()).get('failures', {})
     torch.set_num_threads(args.threads)
     Path(args.exp_dir).mkdir(parents=True, exist_ok=True)
     # NOTE: set seed

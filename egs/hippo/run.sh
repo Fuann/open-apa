@@ -151,20 +151,8 @@ eval_args=(--manifest "$feature_dir/et.csv" --scores "$scores" --feature-dir "$f
 if ((stop_stage>=2)); then
   python src/feats_extract/extract_features.py check "${extract_args[@]}"
 fi
-if ((stage<=2 && stop_stage>=2)); then
-  echo "Stage 2: feature audit and Hippo inference"
-  python src/evaluate_speechocean762.py "${eval_args[@]}" --audit-only
-  for seed in $seeds; do
-    mkdir -p "$exp_dir/$seed"
-    python -u inference.py --seed "$seed" --feature-dir "$feature_dir" \
-      --checkpoint "$models/hippo/$seed/models/best_audio_model.pth" --exp-dir "$exp_dir/$seed" \
-      --response-mode "$response_mode" --asr-variant fresh --batch_size "$batch_size" --threads "$threads" --device "$device" \
-      2>&1 | tee "$exp_dir/$seed/inference.log"
-  done
-fi
-if ((stage<=3 && stop_stage>=3)); then
-  echo "Stage 3: evaluation"
-  word_evaluation_args=()
+word_evaluation_args=()
+if ((stop_stage>=2)); then
   if [[ $response_mode == open ]]; then
     transcript_file="$transcript_dir/faster-whisper-${whisper_model}-float16-beam5.jsonl"
     statistics_file="${transcript_file%.jsonl}.word-evaluation.json"
@@ -174,6 +162,21 @@ if ((stage<=3 && stop_stage>=3)); then
       --transcript "$transcript_file" --scores "$scores"
     word_evaluation_args=(--word-evaluation "$word_evaluation_file")
   fi
+fi
+if ((stage<=2 && stop_stage>=2)); then
+  echo "Stage 2: feature audit and Hippo inference"
+  python src/evaluate_speechocean762.py "${eval_args[@]}" --audit-only
+  for seed in $seeds; do
+    mkdir -p "$exp_dir/$seed"
+    python -u inference.py --seed "$seed" --feature-dir "$feature_dir" \
+      --checkpoint "$models/hippo/$seed/models/best_audio_model.pth" --exp-dir "$exp_dir/$seed" \
+      --response-mode "$response_mode" --asr-variant fresh --batch_size "$batch_size" --threads "$threads" --device "$device" \
+      --scores "$scores" "${word_evaluation_args[@]}" \
+      2>&1 | tee "$exp_dir/$seed/inference.log"
+  done
+fi
+if ((stage<=3 && stop_stage>=3)); then
+  echo "Stage 3: evaluation"
   python src/evaluate_speechocean762.py "${eval_args[@]}" "${word_evaluation_args[@]}"
 fi
 echo "Done through stage $stop_stage. Outputs: $exp_dir"
