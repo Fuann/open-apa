@@ -163,9 +163,13 @@ def main():
                 words=[dict(word_index=int(w),scores=dict(zip(WORD,raw[i,wids==w].mean(0).tolist()))) for w in np.unique(wids[wids>=0])]
                 handle.write(json.dumps(dict(id=key,valid=True,fallback=False,utterance=dict(zip(UTT,up[i].tolist())),words=words))+'\n')
         if word_evaluation:
-            pred_words, target_words = open_word_arrays(
+            scoped_words = open_word_arrays(
                 raw, raw_target, ids, word_evaluation, report['failures'])
-            result['word_open_ms'] = {m: metrics(pred_words[:, i], target_words[:, i]) for i, m in enumerate(WORD)}
+            result['word_open'] = {
+                scope: {metric: metrics(prediction[:, i], target[:, i])
+                        for i, metric in enumerate(WORD)}
+                for scope, (prediction, target) in scoped_words.items()
+            }
         (seed_dir/'metrics.json').write_text(json.dumps(result,indent=2)+'\n')
         all_results['checkpoint']=result
     if not all_results:
@@ -176,7 +180,7 @@ def main():
     lines.append('Feature text normalization: ' + report.get('feature_provenance', {}).get('text_normalization', 'legacy Hippo (not recomputed)'))
     lines.append(f'Evaluation alignment fallback: {len(evaluation_failures)} (details in metrics.json)')
     lines.append(f"ASR fallback: {report['fallback_count']}; model predictions: {report['predicted_count']}")
-    groups = (fallback_group, 'word_open_ms') if word_evaluation else (fallback_group, 'word_hippo_sequence')
+    groups = (fallback_group,) if word_evaluation else (fallback_group, 'word_hippo_sequence')
     checkpoint_result = all_results['checkpoint']
     for group in groups:
         summary[group]={}
@@ -188,10 +192,23 @@ def main():
                 continue
             summary[group][metric]=dict(pcc=value)
             lines.append(f'{metric:14s} {value:.4f}')
-    lines.append('\nWord PCC scope: match+substitution. Insertions and deletions are excluded; failed utterances are excluded from word PCC.')
+    if word_evaluation:
+        lines.append('\nword_open PCC (M/S/M+S)')
+        lines.append(f"{'metric':14s} {'M':>9s} {'S':>9s} {'M+S':>9s}")
+        summary['word_open'] = {}
+        for metric in WORD:
+            summary['word_open'][metric] = {}
+            cells = []
+            for scope in ('M', 'S', 'M+S'):
+                metric_result = checkpoint_result['word_open'][scope][metric]
+                summary['word_open'][metric][scope] = metric_result
+                value = metric_result['pcc']
+                cells.append('N/A' if value is None else f'{value:.4f}')
+            lines.append(f'{metric:14s} {cells[0]:>9s} {cells[1]:>9s} {cells[2]:>9s}')
+    lines.append('\nWord PCC scopes: match (M), substitution (S), and their union (M+S). Insertions, deletions, and failed utterances are excluded.')
     report.update(result=checkpoint_result, summary=summary,
-                  word_pcc_scope='match+substitution',
-                  main_word_protocols=['levenshtein_match_substitution'] if word_evaluation else ['hippo_sequence'])
+                  word_pcc_scope='match/substitution/match+substitution',
+                  main_word_protocols=['levenshtein_scoped'] if word_evaluation else ['hippo_sequence'])
     (args.exp_dir/'metrics.json').write_text(json.dumps(report,indent=2)+'\n')
     (args.exp_dir/'result.txt').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))

@@ -180,11 +180,17 @@ def pad_merged_words(reference_text, predicted_text, predicted_scores):
     return padded
 
 
-def correlation(name, prediction, reference):
-    pcc = pearsonr(prediction, reference).statistic
-    srcc = spearmanr(prediction, reference).statistic
-    PCC_RESULTS[name] = float(pcc)
-    print(f"{name:<14} N={len(prediction):>5}  PCC={pcc:>8.4f}  SRCC={srcc:>8.4f}")
+def correlation(name, prediction, reference, display=True):
+    variable = (len(prediction) > 1 and np.std(prediction) > 0
+                and np.std(reference) > 0)
+    pcc = float(pearsonr(prediction, reference).statistic) if variable else None
+    srcc = float(spearmanr(prediction, reference).statistic) if variable else None
+    PCC_RESULTS[name] = pcc
+    if display:
+        pcc_text = "N/A" if pcc is None else f"{pcc:.4f}"
+        srcc_text = "N/A" if srcc is None else f"{srcc:.4f}"
+        print(f"{name:<14} N={len(prediction):>5}  PCC={pcc_text:>8s}  SRCC={srcc_text:>8s}")
+    return pcc
 
 
 def main():
@@ -216,6 +222,11 @@ def main():
 
     predicted_words = {metric: [] for metric in ("accuracy", "stress", "total")}
     reference_words = {metric: [] for metric in predicted_words}
+    open_words = {
+        scope: ({metric: [] for metric in predicted_words},
+                {metric: [] for metric in predicted_words})
+        for scope in ("M", "S", "M+S")
+    }
     edit_counts = {name: 0 for name in ("match", "substitution", "insertion", "deletion")}
     reference_count = hypothesis_count = 0
     for key in matched:
@@ -240,13 +251,16 @@ def main():
             for predicted_index, reference_index in enumerate(mapping):
                 if reference_index is None:
                     continue
+                scope = ("M" if predicted_text[predicted_index]
+                         == reference_text[reference_index] else "S")
                 for metric in predicted_words:
-                    predicted_words[metric].append(
-                        prediction[f"word_{metric}"][predicted_index]
-                    )
-                    reference_words[metric].append(
-                        float(words[reference_index][metric])
-                    )
+                    predicted_score = prediction[f"word_{metric}"][predicted_index]
+                    reference_score = float(words[reference_index][metric])
+                    predicted_words[metric].append(predicted_score)
+                    reference_words[metric].append(reference_score)
+                    for selected_scope in (scope, "M+S"):
+                        open_words[selected_scope][0][metric].append(predicted_score)
+                        open_words[selected_scope][1][metric].append(reference_score)
             continue
         if " ".join(predicted_text) == " ".join(reference_text):
             scores = {
@@ -281,8 +295,19 @@ def main():
     protocol = ("Levenshtein match+substitution" if args.evaluation_mode == "open"
                 else "ground-truth timestamp overlap")
     print(f"\nWord-level correlation ({protocol})")
-    for metric in predicted_words:
-        correlation(f"word {metric}", predicted_words[metric], reference_words[metric])
+    if args.evaluation_mode == "open":
+        print(f"{'metric':14s} {'M':>9s} {'S':>9s} {'M+S':>9s}")
+        for metric in predicted_words:
+            cells = []
+            for scope in ("M", "S", "M+S"):
+                prediction, reference = open_words[scope]
+                value = correlation(f"word_{metric}_{scope}", prediction[metric],
+                                    reference[metric], display=False)
+                cells.append("N/A" if value is None else f"{value:.4f}")
+            print(f"{metric:14s} {cells[0]:>9s} {cells[1]:>9s} {cells[2]:>9s}")
+    else:
+        for metric in predicted_words:
+            correlation(f"word {metric}", predicted_words[metric], reference_words[metric])
 
     if args.pcc_json:
         output = Path(args.pcc_json)

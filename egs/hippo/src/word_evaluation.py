@@ -10,8 +10,8 @@ def load_word_evaluation(path, manifest, scores):
     evaluation = json.loads(path.read_text())
     expected = {name: hashlib.sha256(source.read_bytes()).hexdigest()
                 for name, source in [('manifest', manifest), ('scores', scores)]}
-    if evaluation.get('protocol') != 'levenshtein_match_substitution':
-        raise ValueError('Expected Levenshtein match+substitution word evaluation')
+    if evaluation.get('protocol') != 'levenshtein_match_substitution_scopes':
+        raise ValueError('Expected scoped Levenshtein word evaluation')
     if evaluation.get('fingerprint') != expected:
         raise ValueError('Word evaluation manifest/scores mismatch')
     with manifest.open() as handle:
@@ -20,10 +20,10 @@ def load_word_evaluation(path, manifest, scores):
 
 
 def open_word_arrays(raw, raw_target, ids, evaluation, failures):
-    """Pool phone predictions on the 0–10 scale; retain M+S and cap at 10."""
+    """Return capped pooled word arrays for match, substitution, and M+S."""
     if len(raw) != len(ids) or len(raw_target) != len(ids):
         raise ValueError('Word evaluation/prediction row count mismatch')
-    pred_words, target_words = [], []
+    arrays = {scope: ([], []) for scope in ('M', 'S', 'M+S')}
     for i, key in enumerate(ids):
         if key in failures or key in evaluation.get('failures', {}):
             continue
@@ -33,10 +33,18 @@ def open_word_arrays(raw, raw_target, ids, evaluation, failures):
         if unique.tolist() != list(range(len(item['words']))):
             raise ValueError(f'Word evaluation/prediction token mismatch: {key}')
         indices = item['score_indices']
-        if (len(indices) != len(item['targets']) or len(set(indices)) != len(indices)
+        operations = item.get('operations', [])
+        if (len(indices) != len(item['targets']) or len(indices) != len(operations)
+                or any(operation not in ('match', 'substitution') for operation in operations)
+                or len(set(indices)) != len(indices)
                 or any(w not in unique for w in indices)):
             raise ValueError(f'Invalid word evaluation indices/targets: {key}')
-        pred_words.extend(np.minimum(10., raw[i, wids == w].mean(0)) for w in indices)
-        target_words.extend(item['targets'])
-    return (np.asarray(pred_words).reshape(-1, 3),
-            np.asarray(target_words).reshape(-1, 3))
+        for word_index, target, operation in zip(indices, item['targets'], operations):
+            prediction = np.minimum(10., raw[i, wids == word_index].mean(0))
+            scope = 'M' if operation == 'match' else 'S'
+            for selected_scope in (scope, 'M+S'):
+                arrays[selected_scope][0].append(prediction)
+                arrays[selected_scope][1].append(target)
+    return {scope: (np.asarray(prediction).reshape(-1, 3),
+                    np.asarray(target).reshape(-1, 3))
+            for scope, (prediction, target) in arrays.items()}

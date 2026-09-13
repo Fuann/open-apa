@@ -102,9 +102,9 @@ If `references` already exists but is not that symlink, rename or remove it
 before running `run.sh`. Both modes still use Whisper `base.en` for the
 comparison ASR transcript.
 
-The open word metric uses deterministic Levenshtein alignment: matches and
-substitutions contribute to pooled word PCC, while insertions and deletions are
-excluded. Coverage, WER, and M/S/I/D counts are written beside the transcript as
+The open word metric uses deterministic Levenshtein alignment and reports PCC
+in three columns: match-only (`M`), substitution-only (`S`), and their union
+(`M+S`). Insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are written beside the transcript as
 `*.word-evaluation.json`. Ground-truth Charsiu alignments are no longer required
 for open evaluation; the MultiPA model itself still uses its native alignment
 features during inference.

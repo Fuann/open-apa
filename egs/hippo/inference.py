@@ -176,7 +176,7 @@ def validate(audio_model, val_loader, args):
     if args.response_mode == 'open':
         prediction, target = open_word_arrays(
             A_word.numpy() * 5, A_word_target.numpy(), args.word_ids,
-            args.word_evaluation_data, args.word_failures)
+            args.word_evaluation_data, args.word_failures)['M+S']
         word_mse = [float(np.mean((prediction[:, i] - target[:, i]) ** 2))
                     if len(prediction) else float('nan') for i in range(3)]
         word_corr = [safe_corr(prediction[:, i], target[:, i]) for i in range(3)]

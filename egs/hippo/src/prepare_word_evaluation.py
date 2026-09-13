@@ -28,6 +28,7 @@ def align_words(reference, hypothesis):
                 (cost[row][column - 1] + 1, 'insertion'),
             ], key=lambda item: item[0])
     mapping = [None] * columns
+    aligned_operations = [None] * columns
     counts = {name: 0 for name in ('match', 'substitution', 'insertion', 'deletion')}
     row, column = rows, columns
     while row or column:
@@ -35,12 +36,13 @@ def align_words(reference, hypothesis):
         counts[current] += 1
         if current in ('match', 'substitution'):
             mapping[column - 1] = row - 1
+            aligned_operations[column - 1] = current
             row, column = row - 1, column - 1
         elif current == 'deletion':
             row -= 1
         else:
             column -= 1
-    return mapping, counts
+    return mapping, aligned_operations, counts
 
 
 def main():
@@ -57,7 +59,7 @@ def main():
     if args.output.exists() and args.statistics_output.exists():
         cached = json.loads(args.output.read_text())
         if (cached.get('fingerprint') == fingerprint
-                and cached.get('protocol') == 'levenshtein_match_substitution'):
+                and cached.get('protocol') == 'levenshtein_match_substitution_scopes'):
             return
     sys.path.append(str(ROOT / 'src/feats_extract'))
     from extract_features import g2p_processor
@@ -73,7 +75,7 @@ def main():
         reference = refs[key]['words']
         ref_words = [w['text'].lower() for w in reference]
         words, _ = convert(row['asr_transcript']) if row['asr_transcript'] else ([], [])
-        mapping, counts = align_words(ref_words, words)
+        mapping, aligned_operations, counts = align_words(ref_words, words)
         for name in totals:
             totals[name] += counts[name]
         reference_count += len(ref_words)
@@ -83,7 +85,9 @@ def main():
         score_indices = [i for i, reference_index in enumerate(mapping) if reference_index is not None]
         targets = [[float(reference[mapping[i]][metric]) for metric in ('accuracy', 'stress', 'total')]
                    for i in score_indices]
-        output[key] = {'words': words, 'targets': targets, 'score_indices': score_indices}
+        operations = [aligned_operations[i] for i in score_indices]
+        output[key] = {'words': words, 'targets': targets,
+                       'score_indices': score_indices, 'operations': operations}
     evaluated = totals['match'] + totals['substitution']
     statistics = {
         'num_matches': totals['match'], 'num_substitutions': totals['substitution'],
@@ -94,7 +98,7 @@ def main():
         'wer': (totals['substitution'] + totals['insertion'] + totals['deletion']) / reference_count if reference_count else 0.,
     }
     args.output.write_text(json.dumps({'fingerprint': fingerprint,
-        'protocol': 'levenshtein_match_substitution',
+        'protocol': 'levenshtein_match_substitution_scopes',
         'items': output, 'failures': failures}, indent=2)+'\n')
     args.statistics_output.parent.mkdir(parents=True, exist_ok=True)
     args.statistics_output.write_text(json.dumps({

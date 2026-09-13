@@ -103,12 +103,12 @@ by digit; numeric tokens in mixed sentences use cardinal numbers. G2P also strip
 accents and normalizes tokens. Older features without `text_normalization` retain
 their original normalization; reevaluation alone does not change their inputs.
 
-SpeechOcean762 open word PCC uses deterministic Levenshtein alignment. Exact
-matches and substitutions are evaluated against the aligned reference labels;
-insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are
+SpeechOcean762 open word PCC uses deterministic Levenshtein alignment. Results
+are reported in three columns: match-only (`M`), substitution-only (`S`), and
+their union (`M+S`). Insertions and deletions are excluded. Coverage, WER, and M/S/I/D counts are
 written to `word_evaluation.statistics.json` in the experiment directory.
 Stage 2's printed word PCC and `result.csv` use this same protocol as stage 3's
-`word_open_ms`: predictions are capped at 10, and failed utterances are excluded.
+`word_open`: predictions are capped at 10, and failed utterances are excluded.
 Stages 2 and 3 report PCC directly for the released checkpoint; no cross-seed
 mean or standard deviation is computed. Targets are prepared before stage 2,
 including runs with `--stop-stage 2`. Direct open-response calls to `inference.py` require
