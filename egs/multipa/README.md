@@ -88,8 +88,8 @@ bash run.sh --test-data speechocean762 --response-mode open
 
 SpeechOcean762 close uses the dataset's ground-truth transcript as the
 reference. MultiPA open and SpeechOcean762 open use fixed ASR transcripts under
-the repository-level `references` directory. Select `faster-whisper` (default)
-or `whisperx` with `--asr-backend`. When
+the repository-level `references` directory. The evaluation backend defaults
+to `whisperx` and remains selectable with `--asr-backend`. When
 `path.sh` is sourced, it creates `references -> ../../references` in this
 recipe directory. The default ASR transcript is `medium.en`; `large-v3` is
 also selectable with `--whisper-model`. The required files are:
@@ -106,8 +106,8 @@ bash run.sh --test-data speechocean762 --response-mode open \
   --asr-backend whisperx --whisper-model medium.en
 ```
 
-Only backend/model combinations with a corresponding fixed JSONL can run. At
-present, the MultiPA pilot references contain faster-whisper transcripts only.
+Only backend/model combinations with a corresponding fixed JSONL can run. The
+versioned references use the WhisperX backend.
 
 If `references` already exists but is not that symlink, rename or remove it
 before running `run.sh`. Both modes still use Whisper `base.en` for the

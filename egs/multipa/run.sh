@@ -31,7 +31,7 @@ fairseq_roberta=$pretrained_dir/roberta.base
 test_data=multipa
 response_mode=both
 whisper_model=medium.en
-asr_backend=faster-whisper
+asr_backend=whisperx
 gpu=0
 verbose=false
 

@@ -15,10 +15,11 @@ cd "$(dirname "$0")"
 stage=0
 stop_stage=3
 whisper_model=
+asr_backend=whisperx
 transcript_dir=references/speechocean762/test/transcripts
 response_mode=open
-device=cpu
-gpu=
+device=cuda:0
+gpu=0
 threads=4
 batch_size=32
 max_phones=
@@ -41,10 +42,11 @@ usage() {
   cat <<EOF
 Usage: bash run.sh [options]
   --whisper-model NAME  Select one model (default: medium.en then large-v3)
+  --asr-backend NAME    faster-whisper or whisperx (default: $asr_backend)
   --response-mode MODE  open or closed (default: open)
   --stage N            First stage (default: 0)
   --stop-stage N       Last stage (default: 3)
-  --device DEVICE      Extraction/inference device (default: cpu)
+  --device DEVICE      Extraction/inference device (default: cuda:0)
   --gpu N              Use GPU N (sets --device cuda:0)
   --threads N          PyTorch CPU threads (default: 4)
   --batch-size N       Hippo inference batch size (default: 32)
@@ -73,6 +75,7 @@ while (($#)); do
     --stage) stage=$2;;
     --stop-stage) stop_stage=$2;;
     --whisper-model) whisper_model=$2;;
+    --asr-backend) asr_backend=$2;;
     --response-mode) response_mode=$2;;
     --device) device=$2;;
     --gpu) gpu=$2;;
@@ -97,6 +100,7 @@ for value in "$stage" "$stop_stage" "$threads" "$batch_size" "$max_phones" "$lim
 done
 ((stage<=stop_stage && stop_stage<=3 && threads>0 && batch_size>0 && max_phones>0)) || { echo "Invalid stage or numeric settings" >&2; exit 2; }
 [[ $response_mode == open || $response_mode == closed ]] || { echo "Invalid response mode" >&2; exit 2; }
+[[ $asr_backend == faster-whisper || $asr_backend == whisperx ]] || { echo "Invalid ASR backend: $asr_backend" >&2; exit 2; }
 [[ -z $whisper_model || $whisper_model =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Use a Whisper model name, not a file path" >&2; exit 2; }
 if [[ -n $gpu ]]; then
   [[ $gpu =~ ^[0-9]+$ ]] || { echo "Invalid GPU index" >&2; exit 2; }
@@ -111,7 +115,8 @@ if [[ -z $whisper_model ]]; then
   else
     base_exp=${exp_dir:-exp/hippo}
     for selected_model in medium.en large-v3; do
-      child_args=("${original_args[@]}" --whisper-model "$selected_model" --exp-dir "$base_exp/decode_speechocean762_open_$selected_model")
+      child_args=("${original_args[@]}" --whisper-model "$selected_model"
+        --exp-dir "$base_exp/decode_speechocean762_open_${asr_backend}_$selected_model")
       if [[ -n $feature_dir ]]; then
         child_args+=(--feature-dir "$feature_dir/$selected_model")
       fi
@@ -123,7 +128,7 @@ fi
 . ./path.sh
 
 if [[ $response_mode == open ]]; then
-  transcript_file="$transcript_dir/faster-whisper-${whisper_model}-float16-beam5.jsonl"
+  transcript_file="$transcript_dir/${asr_backend}-${whisper_model}-float16-beam5.jsonl"
   [[ -f $transcript_file ]] || {
     echo "Missing fixed ASR transcripts: $transcript_file" >&2
     exit 1
@@ -131,10 +136,11 @@ if [[ $response_mode == open ]]; then
 fi
 
 decode_name=decode_speechocean762_$response_mode
-[[ $response_mode != open ]] || decode_name=${decode_name}_$whisper_model
+[[ $response_mode != open ]] || decode_name=${decode_name}_${asr_backend}_${whisper_model}
 exp_dir=${exp_dir:-exp/hippo/$decode_name}
 feature_dir=${feature_dir:-$exp_dir/features}
-extract_args=(--models "$models" --whisper-model "$whisper_model" --transcript-dir "$transcript_dir" --response-mode "$response_mode"
+extract_args=(--models "$models" --whisper-model "$whisper_model" --asr-backend "$asr_backend"
+  --transcript-dir "$transcript_dir" --response-mode "$response_mode"
   --wav-dir "$wav_dir" --scores "$scores" --output "$feature_dir" --device "$device"
   --threads "$threads" --max-phones "$max_phones" --limit "$limit")
 if ((stage<=0 && stop_stage>=0)); then

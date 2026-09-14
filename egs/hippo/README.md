@@ -44,6 +44,9 @@ bash run.sh
 # One ASR model, with GPU extraction and inference.
 bash run.sh --whisper-model large-v3 --gpu 0
 
+# Use the provided WhisperX medium.en transcript.
+bash run.sh --asr-backend whisperx --whisper-model medium.en --gpu 0
+
 # Closed response uses ground-truth text.
 bash run.sh --response-mode closed --gpu 0
 
@@ -51,15 +54,16 @@ bash run.sh --response-mode closed --gpu 0
 bash run.sh --stage 2 --response-mode closed \
   --exp-dir exp/hippo/decode_speechocean762_closed
 bash run.sh --stage 2 --whisper-model large-v3 \
-  --exp-dir exp/hippo/decode_speechocean762_open_large-v3
+  --exp-dir exp/hippo/decode_speechocean762_open_whisperx_large-v3
 
 # CPU smoke run in a separate directory.
 bash run.sh --limit 2 --whisper-model medium.en \
   --exp-dir exp/hippo/smoke
 ```
 
-Extraction and inference default to CPU. `--gpu N` selects one CUDA device;
-`--device` is honored by inference without `DataParallel`. See
+Extraction and inference default to `cuda:0` (GPU 0). `--gpu N` selects another
+CUDA device; `--device cpu` remains available. `--device` is honored by
+inference without `DataParallel`. See
 `bash run.sh --help` for all options.
 
 | Stage | Work |
@@ -72,8 +76,8 @@ Extraction and inference default to CPU. `--gpu N` selects one CUDA device;
 Default experiment directories are:
 
 - `exp/hippo/decode_speechocean762_closed`
-- `exp/hippo/decode_speechocean762_open_medium.en`
-- `exp/hippo/decode_speechocean762_open_large-v3`
+- `exp/hippo/decode_speechocean762_open_whisperx_medium.en`
+- `exp/hippo/decode_speechocean762_open_whisperx_large-v3`
 
 A two-model run treats `--exp-dir` as a parent for the two named open directories.
 Stage 1 recomputes features and refuses to overwrite an existing feature directory.
@@ -87,12 +91,17 @@ Open mode uses the model-specific JSONL files in the repository-level shared
 `references` directory, matched by `audio_id`. When `path.sh` is sourced, it
 creates `references -> ../../references` in this recipe directory:
 
-- `faster-whisper-medium.en-float16-beam5.jsonl`
-- `faster-whisper-large-v3-float16-beam5.jsonl`
+- `whisperx-medium.en-float16-beam5.jsonl`
+- `whisperx-large-v3-float16-beam5.jsonl`
 
-The files were generated with faster-whisper 1.2.1 / CTranslate2 4.8.1, CUDA
-float16, beam size 5, temperature 0, seed 0, English transcription,
-`condition_on_previous_text=False`, `vad_filter=False`, and word timestamps.
+WhisperX is the default evaluation backend. With no model specified, the recipe
+runs both versioned references. `--asr-backend faster-whisper` remains available
+for a compatible local transcript, but faster-whisper transcripts are not
+versioned in this repository.
+
+The WhisperX references use CTranslate2 4.8.1, CUDA float16, beam size 5,
+batch size 16, seed 0, `condition_on_previous_text=False`, and no word
+timestamps. Their metadata is validated before extraction.
 `run.sh` reports an error when the selected fixed transcript is unavailable;
 it does not generate or modify shared references. Settings and transcript
 provenance are recorded in `features/features.json`.

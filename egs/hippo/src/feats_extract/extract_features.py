@@ -193,7 +193,8 @@ def extract(args):
     if args.response_mode == 'open':
         from transcripts import resolve_transcripts
         resolved, transcript_provenance = resolve_transcripts(
-            ids, args.wav_dir, args.transcript_dir, args.whisper_model, args.models, args.device, args.threads)
+            ids, args.wav_dir, args.transcript_dir, args.whisper_model, args.models,
+            args.device, args.threads, args.asr_backend)
     for key in tqdm(ids, desc="Transcript inputs", unit="utt", dynamic_ncols=True):
         ref = refs[key]
         path = args.wav_dir / f'{key}.wav'
@@ -294,7 +295,7 @@ def extract(args):
             features.append(pad_rows(vectors.cpu().numpy()[word_ids], args.max_phones))
     # Inference only consumes the first 768 dims of the historical 1536-dim array.
     save_array(folder, 'langUse_mbert_wordEmbs', features)
-    metadata = {'schema_version': 4, 'text_normalization': 'multipa', 'transcript_provenance': transcript_provenance, 'failures': failures, 'source': 'fresh_audio', 'whisper_model': args.whisper_model,
+    metadata = {'schema_version': 4, 'text_normalization': 'multipa', 'transcript_provenance': transcript_provenance, 'failures': failures, 'source': 'fresh_audio', 'whisper_model': args.whisper_model, 'asr_backend': args.asr_backend,
                 'response_mode': args.response_mode, 'max_phones': args.max_phones,
                 'utterance_ids': ids, 'requested_ids': ids, 'scores_sha256': hashlib.sha256(args.scores.read_bytes()).hexdigest(),
                 'models_dir': str(args.models), 'ssl_models': SSL_MODELS, 'word_model': BERT_MODEL,
@@ -316,6 +317,7 @@ def main():
     p.add_argument('action', choices=['download', 'extract', 'check'])
     p.add_argument('--models', type=Path, default=ROOT / 'pretrained-models')
     p.add_argument('--whisper-model', default='large-v3')
+    p.add_argument('--asr-backend', choices=['faster-whisper', 'whisperx'], default='faster-whisper')
     p.add_argument('--transcript-dir', type=Path, default=ROOT / 'data/speechocean762/transcript/test')
     p.add_argument('--response-mode', choices=['open', 'closed'], default='open')
     p.add_argument('--wav-dir', type=Path, default=ROOT / 'data/speechocean762/wav')
@@ -334,7 +336,9 @@ def main():
     configure(args.models)
     if args.action == 'check':
         meta = json.loads((args.output / 'features.json').read_text())
-        if meta['source'] != 'fresh_audio' or meta['whisper_model'] != args.whisper_model or meta['response_mode'] != args.response_mode:
+        if (meta['source'] != 'fresh_audio' or meta['whisper_model'] != args.whisper_model
+                or meta.get('asr_backend', 'faster-whisper') != args.asr_backend
+                or meta['response_mode'] != args.response_mode):
             raise ValueError('Feature origin/ASR configuration mismatch; rerun extraction into a new directory')
         if meta['scores_sha256'] != hashlib.sha256(args.scores.read_bytes()).hexdigest():
             raise ValueError('Scores changed since extraction')
