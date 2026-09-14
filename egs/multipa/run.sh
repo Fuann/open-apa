@@ -31,6 +31,7 @@ fairseq_roberta=$pretrained_dir/roberta.base
 test_data=multipa
 response_mode=both
 whisper_model=medium.en
+asr_backend=faster-whisper
 gpu=0
 verbose=false
 
@@ -58,6 +59,8 @@ Options:
   --whisper-model NAME Main transcript Whisper model (default: $whisper_model)
                        MultiPA open and SpeechOcean762 open support medium.en
                        and large-v3, using fixed JSONL under references/.
+  --asr-backend NAME   Main transcript backend: faster-whisper or whisperx
+                       (default: $asr_backend)
   --verbose       Print each audio prediction (default: disabled)
 EOF
 }
@@ -70,11 +73,17 @@ while [[ $# -gt 0 ]]; do
         --test-data) test_data=$2; shift 2 ;;
         --response-mode) response_mode=$2; shift 2 ;;
         --whisper-model) whisper_model=$2; shift 2 ;;
+        --asr-backend) asr_backend=$2; shift 2 ;;
         --verbose) verbose=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
+
+case "$asr_backend" in
+    faster-whisper|whisperx) ;;
+    *) echo "Unsupported --asr-backend: $asr_backend" >&2; exit 2 ;;
+esac
 
 case "$test_data" in
     multipa)
@@ -127,9 +136,9 @@ if [[ " ${response_modes[*]} " == *" open "* ]]; then
             ;;
     esac
     if [[ $test_data == multipa ]]; then
-        open_transcript_file=references/multipa/transcripts/faster-whisper-${whisper_model}-float16-beam5.jsonl
+        open_transcript_file=references/multipa/transcripts/${asr_backend}-${whisper_model}-float16-beam5.jsonl
     else
-        open_transcript_file=references/speechocean762/test/transcripts/faster-whisper-${whisper_model}-float16-beam5.jsonl
+        open_transcript_file=references/speechocean762/test/transcripts/${asr_backend}-${whisper_model}-float16-beam5.jsonl
     fi
     [[ -f $open_transcript_file ]] || {
         echo "Missing fixed ASR transcripts: $open_transcript_file" >&2
@@ -140,10 +149,8 @@ fi
 decode_directory() {
     local mode=$1
     local name=decode_${test_data}_${mode}
-    if [[ $test_data == speechocean762 && $mode == open ]]; then
-        name+=_faster-whisper-${whisper_model}-float16-beam5
-    elif [[ $mode == open && $whisper_model != medium.en ]]; then
-        name+=_${whisper_model//\//_}
+    if [[ $mode == open ]]; then
+        name+=_${asr_backend}-${whisper_model//\//_}-float16-beam5
     fi
     echo "exp/$pretrained_model/$name"
 }
