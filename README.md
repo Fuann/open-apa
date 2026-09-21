@@ -33,4 +33,6 @@ bash run.sh --test-data speechocean762
 
 ## License
 
-OpenAPA is released under the [BSD 3-Clause License](LICENSE).
+OpenAPA contributions are released under the [BSD 3-Clause License](LICENSE).
+Included and referenced third-party materials remain subject to their
+respective terms; see [Third-party notices](THIRD_PARTY_NOTICES.md).
