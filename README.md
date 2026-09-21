@@ -2,9 +2,9 @@
   <img src="assets/openapa-banner.png" alt="OpenAPA — Open-response pronunciation assessment" width="100%">
 </p>
 
-# OpenAPA
+#
 
-OpenAPA is an open-source benchmark and evaluation toolkit for pronunciation assessment in open-response scenarios. It is designed to grow with new datasets, methods, and evaluation protocols.
+**OpenAPA** is an open-source benchmark and evaluation toolkit for pronunciation assessment in open-response scenarios. It is designed to grow with new datasets, methods, and evaluation protocols.
 
 Currently supported:
 
@@ -30,3 +30,7 @@ bash run.sh --test-data multipa
 # SpeechOcean762 closed- and open-response evaluation
 bash run.sh --test-data speechocean762
 ```
+
+## License
+
+OpenAPA is released under the [BSD 3-Clause License](LICENSE).
