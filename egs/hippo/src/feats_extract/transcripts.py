@@ -8,7 +8,7 @@ ASR_SETTINGS = dict(backend='faster-whisper', device='cuda', compute_type='float
                     vad_filter=False, word_timestamps=True, random_seed=0,
                     faster_whisper_version='1.2.1', ctranslate2_version='4.8.1')
 WHISPERX_SETTINGS = dict(backend='whisperx', device='cuda', compute_type='float16',
-                         beam_size=5, batch_size=16, word_timestamps=False,
+                         beam_size=5, batch_size=16,
                          condition_on_previous_text=False, vad_method='none',
                          random_seed=0, ctranslate2_version='4.8.1')
 
@@ -38,6 +38,8 @@ def read_transcripts(path, model, backend='faster-whisper'):
             for name, expected in {**expected_settings, 'model': model}.items():
                 if settings.get(name) != expected:
                     raise ValueError(f'ASR setting mismatch for {key}: {name} must be {expected!r}')
+            if backend == 'whisperx' and not isinstance(settings.get('word_timestamps'), bool):
+                raise ValueError(f'ASR setting mismatch for {key}: word_timestamps must be boolean')
             if settings.get('language', 'en') != 'en' or settings.get('task', 'transcribe') != 'transcribe':
                 raise ValueError(f'Expected English transcription: {key}')
             records[key] = record

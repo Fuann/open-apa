@@ -20,6 +20,10 @@ if [[ -n $multipa_conda_exe && -x $multipa_conda_exe ]]; then
     :
 elif command -v conda >/dev/null 2>&1; then
     multipa_conda_exe=$(command -v conda)
+elif [[ -x "$HOME/miniconda3/bin/conda" ]]; then
+    multipa_conda_exe="$HOME/miniconda3/bin/conda"
+elif [[ -x "$HOME/miniforge3/bin/conda" ]]; then
+    multipa_conda_exe="$HOME/miniforge3/bin/conda"
 else
     echo "Conda was not found. Add it to PATH or set MULTIPA_CONDA_EXE." >&2
     return 1
