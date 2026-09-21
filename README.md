@@ -30,8 +30,3 @@ bash run.sh --test-data multipa
 # SpeechOcean762 closed- and open-response evaluation
 bash run.sh --test-data speechocean762
 ```
-
-For method-specific setup and options, see the recipe documentation:
-
-- [MultiPA](egs/multipa/README.md)
-- [HiPPO](egs/hippo/README.md)

@@ -35,9 +35,7 @@ If you find this repository useful, please cite the following paper:
 @inproceedings{yan-etal-2025-hippo,
     title = "{H}i{PPO}: Exploring A Novel Hierarchical Pronunciation Assessment Approach for Spoken Languages",
     author = "Yan, Bi-Cheng  and Wang, Hsin Wei  and Chao, Fu-An  and Lo, Tien-Hong  and Hsu, Yung-Chang  and Chen, Berlin",
-    editor = "Inui, Kentaro and Sakti, Sakriani  and
-      Wang, Haofen  and Wong, Derek F.  and Bhattacharyya, Pushpak  and Banerjee, Biplab  and
-      Ekbal, Asif  and Chakraborty, Tanmoy  and Singh, Dhirendra Pratap",
+    editor = "Inui, Kentaro and Sakti, Sakriani  and Wang, Haofen  and Wong, Derek F.  and Bhattacharyya, Pushpak  and Banerjee, Biplab  and Ekbal, Asif  and Chakraborty, Tanmoy  and Singh, Dhirendra Pratap",
     booktitle = "Proceedings of the 14th International Joint Conference on Natural Language Processing and the 4th Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics",
     month = dec,
     year = "2025",
