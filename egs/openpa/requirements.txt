@@ -1,0 +1,15 @@
+torch>=2.1
+transformers>=4.46
+datasets[audio]>=3.1
+accelerate>=1.0
+peft>=0.13
+faster-whisper>=1.1
+whisperx>=3.3
+tqdm>=4.66
+numpy>=1.24
+num2words>=0.5.14
+soundfile>=0.12
+scipy>=1.10
+silero-vad>=5.1
+g2p-en>=2.1.0
+nltk>=3.8
